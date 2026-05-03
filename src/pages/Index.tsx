@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import Hls from "hls.js";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
-import { Play, Pause, Search, Radio, Volume2, VolumeX, Globe2, Loader2 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Play, Pause, Search, Radio, Volume2, VolumeX, Globe2, Loader2, Tv, Newspaper, Trophy, Music2, Sparkles } from "lucide-react";
 
 type Country = { name: string; iso_3166_1: string; stationcount: number };
 type Station = {
@@ -18,10 +20,27 @@ type Station = {
   language: string;
 };
 
+type TvChannel = {
+  id: string;
+  name: string;
+  country: string;
+  categories: string[];
+  logo: string;
+  url: string;
+};
+type TvCountry = { code: string; name: string; flag: string; count: number };
+
 const API_BASES = [
   "https://de1.api.radio-browser.info",
   "https://nl1.api.radio-browser.info",
   "https://at1.api.radio-browser.info",
+];
+
+const RADIO_CATEGORIES = [
+  { id: "all", label: "All", icon: Sparkles, tags: [] as string[] },
+  { id: "news", label: "News", icon: Newspaper, tags: ["news", "talk", "info", "politics"] },
+  { id: "sports", label: "Sports", icon: Trophy, tags: ["sport", "sports", "football", "soccer"] },
+  { id: "music", label: "Music", icon: Music2, tags: ["music", "pop", "rock", "hits", "dance", "jazz", "classical"] },
 ];
 
 const flag = (iso: string) =>
@@ -30,6 +49,17 @@ const flag = (iso: string) =>
     .replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
 
 const Index = () => {
+  // shared player
+  const [mode, setMode] = useState<"radio" | "tv">("radio");
+  const [volume, setVolume] = useState(80);
+  const [muted, setMuted] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
+
+  // RADIO state
   const [countries, setCountries] = useState<Country[]>([]);
   const [country, setCountry] = useState<Country | null>(null);
   const [stations, setStations] = useState<Station[]>([]);
@@ -37,14 +67,19 @@ const Index = () => {
   const [countrySearch, setCountrySearch] = useState("");
   const [loadingCountries, setLoadingCountries] = useState(true);
   const [loadingStations, setLoadingStations] = useState(false);
-  const [current, setCurrent] = useState<Station | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const [volume, setVolume] = useState(80);
-  const [muted, setMuted] = useState(false);
-  const [buffering, setBuffering] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
+  const [category, setCategory] = useState("all");
+  const [currentRadio, setCurrentRadio] = useState<Station | null>(null);
   const apiBase = useRef(API_BASES[0]);
+
+  // TV state
+  const [tvCountries, setTvCountries] = useState<TvCountry[]>([]);
+  const [tvCountry, setTvCountry] = useState<TvCountry | null>(null);
+  const [tvChannels, setTvChannels] = useState<TvChannel[]>([]);
+  const [tvAll, setTvAll] = useState<TvChannel[]>([]);
+  const [tvSearch, setTvSearch] = useState("");
+  const [tvCountrySearch, setTvCountrySearch] = useState("");
+  const [loadingTv, setLoadingTv] = useState(false);
+  const [currentTv, setCurrentTv] = useState<TvChannel | null>(null);
 
   const fetchWithFallback = async (path: string) => {
     let lastErr: unknown;
@@ -62,7 +97,7 @@ const Index = () => {
   };
 
   useEffect(() => {
-    document.title = "Wavebox · Free Internet Radio from Around the World";
+    document.title = "Wavebox · Free Radio & TV from Around the World";
     (async () => {
       try {
         const data: Country[] = await fetchWithFallback(
@@ -77,13 +112,62 @@ const Index = () => {
     })();
   }, []);
 
+  // Lazy-load TV data on first switch to TV
+  useEffect(() => {
+    if (mode !== "tv" || tvAll.length > 0) return;
+    setLoadingTv(true);
+    (async () => {
+      try {
+        const [channelsRes, streamsRes, countriesRes] = await Promise.all([
+          fetch("https://iptv-org.github.io/api/channels.json").then((r) => r.json()),
+          fetch("https://iptv-org.github.io/api/streams.json").then((r) => r.json()),
+          fetch("https://iptv-org.github.io/api/countries.json").then((r) => r.json()),
+        ]);
+        const streamMap = new Map<string, string>();
+        for (const s of streamsRes) {
+          if (s.channel && !streamMap.has(s.channel)) streamMap.set(s.channel, s.url);
+        }
+        const countryMap = new Map<string, { name: string; flag: string }>();
+        for (const c of countriesRes) countryMap.set(c.code, { name: c.name, flag: c.flag });
+
+        const channels: TvChannel[] = channelsRes
+          .filter((c: any) => !c.is_nsfw && streamMap.has(c.id) && c.country)
+          .map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            country: c.country,
+            categories: c.categories || [],
+            logo: c.logo,
+            url: streamMap.get(c.id)!,
+          }));
+
+        const counts = new Map<string, number>();
+        for (const c of channels) counts.set(c.country, (counts.get(c.country) || 0) + 1);
+        const cList: TvCountry[] = [];
+        for (const [code, count] of counts.entries()) {
+          const meta = countryMap.get(code);
+          if (meta) cList.push({ code, name: meta.name, flag: meta.flag, count });
+        }
+        cList.sort((a, b) => b.count - a.count);
+
+        setTvAll(channels);
+        setTvCountries(cList);
+      } catch (e) {
+        console.error("Failed to load TV data", e);
+      } finally {
+        setLoadingTv(false);
+      }
+    })();
+  }, [mode, tvAll.length]);
+
   const loadStations = async (c: Country) => {
     setCountry(c);
     setStations([]);
     setLoadingStations(true);
+    setCategory("all");
     try {
       const data: Station[] = await fetchWithFallback(
-        `/json/stations/search?countrycode=${c.iso_3166_1}&hidebroken=true&order=clickcount&reverse=true&limit=400`
+        `/json/stations/search?countrycode=${c.iso_3166_1}&hidebroken=true&order=clickcount&reverse=true&limit=600`
       );
       setStations(data.filter((s) => s.url_resolved));
     } catch (e) {
@@ -93,28 +177,62 @@ const Index = () => {
     }
   };
 
+  const loadTvCountry = (c: TvCountry) => {
+    setTvCountry(c);
+    setTvChannels(tvAll.filter((ch) => ch.country === c.code));
+    setTvSearch("");
+  };
+
   const filteredCountries = useMemo(
     () => countries.filter((c) => c.name.toLowerCase().includes(countrySearch.toLowerCase())),
     [countries, countrySearch]
   );
-  const filteredStations = useMemo(
-    () =>
-      stations.filter(
-        (s) =>
-          s.name.toLowerCase().includes(search.toLowerCase()) ||
-          s.tags.toLowerCase().includes(search.toLowerCase())
-      ),
-    [stations, search]
-  );
 
-  const play = (s: Station) => {
+  const filteredStations = useMemo(() => {
+    const cat = RADIO_CATEGORIES.find((c) => c.id === category);
+    const q = search.toLowerCase();
+    return stations.filter((s) => {
+      const hay = `${s.name} ${s.tags}`.toLowerCase();
+      const matchSearch = !q || hay.includes(q);
+      const matchCat = !cat || cat.tags.length === 0 || cat.tags.some((t) => hay.includes(t));
+      return matchSearch && matchCat;
+    });
+  }, [stations, search, category]);
+
+  const filteredTvCountries = useMemo(
+    () => tvCountries.filter((c) => c.name.toLowerCase().includes(tvCountrySearch.toLowerCase())),
+    [tvCountries, tvCountrySearch]
+  );
+  const filteredTvChannels = useMemo(() => {
+    const q = tvSearch.toLowerCase();
+    return tvChannels.filter(
+      (c) => !q || c.name.toLowerCase().includes(q) || c.categories.join(" ").toLowerCase().includes(q)
+    );
+  }, [tvChannels, tvSearch]);
+
+  const stopAll = () => {
+    audioRef.current?.pause();
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.removeAttribute("src");
+      videoRef.current.load();
+    }
+  };
+
+  const playRadio = (s: Station) => {
     if (!audioRef.current) return;
-    if (current?.stationuuid === s.stationuuid && playing) {
+    if (currentRadio?.stationuuid === s.stationuuid && playing) {
       audioRef.current.pause();
       setPlaying(false);
       return;
     }
-    setCurrent(s);
+    stopAll();
+    setCurrentTv(null);
+    setCurrentRadio(s);
     setBuffering(true);
     audioRef.current.src = s.url_resolved;
     audioRef.current.play().then(() => setPlaying(true)).catch(() => {
@@ -124,8 +242,44 @@ const Index = () => {
     fetch(`${apiBase.current}/json/url/${s.stationuuid}`).catch(() => {});
   };
 
+  const playTv = (ch: TvChannel) => {
+    if (!videoRef.current) return;
+    if (currentTv?.id === ch.id && playing) {
+      videoRef.current.pause();
+      setPlaying(false);
+      return;
+    }
+    stopAll();
+    setCurrentRadio(null);
+    setCurrentTv(ch);
+    setBuffering(true);
+    const video = videoRef.current;
+    if (ch.url.includes(".m3u8") && Hls.isSupported()) {
+      const hls = new Hls({ enableWorker: true });
+      hlsRef.current = hls;
+      hls.loadSource(ch.url);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().then(() => setPlaying(true)).catch(() => { setPlaying(false); setBuffering(false); });
+      });
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) { setPlaying(false); setBuffering(false); }
+      });
+    } else {
+      video.src = ch.url;
+      video.play().then(() => setPlaying(true)).catch(() => { setPlaying(false); setBuffering(false); });
+    }
+  };
+
+  const togglePlay = () => {
+    if (currentRadio) playRadio(currentRadio);
+    else if (currentTv) playTv(currentTv);
+  };
+
   useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = muted ? 0 : volume / 100;
+    const v = muted ? 0 : volume / 100;
+    if (audioRef.current) audioRef.current.volume = v;
+    if (videoRef.current) videoRef.current.volume = v;
   }, [volume, muted]);
 
   return (
@@ -146,170 +300,330 @@ const Index = () => {
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tight">Wavebox</h1>
-            <p className="text-xs text-muted-foreground">Free internet radio · worldwide</p>
+            <p className="text-xs text-muted-foreground">Free radio & TV · worldwide</p>
           </div>
         </div>
         <a href="https://www.radio-browser.info" target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-          Powered by Radio-Browser
+          Powered by Radio-Browser & IPTV-Org
         </a>
       </header>
 
-      {/* Hero */}
-      {!country && (
-        <section className="container text-center pt-8 pb-12">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-muted-foreground mb-6">
-            <span className="h-px w-8 bg-border" /> Tune the planet <span className="h-px w-8 bg-border" />
-          </div>
-          <h2 className="text-5xl md:text-7xl font-black tracking-tight leading-[0.95] mb-4">
-            Listen to the world,<br />
-            <span className="bg-clip-text text-transparent" style={{ backgroundImage: "var(--gradient-primary)" }}>
-              one country at a time.
-            </span>
-          </h2>
-          <p className="text-muted-foreground max-w-xl mx-auto">
-            Pick a country and instantly browse thousands of free internet radio stations, ready to play.
-          </p>
-        </section>
-      )}
-
       <div className="container">
-        {!country ? (
-          <>
-            <div className="relative max-w-md mx-auto mb-8">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search countries..."
-                value={countrySearch}
-                onChange={(e) => setCountrySearch(e.target.value)}
-                className="pl-11 h-12 rounded-full glass border-border/60"
-              />
-            </div>
+        <Tabs value={mode} onValueChange={(v) => setMode(v as "radio" | "tv")} className="w-full">
+          <div className="flex justify-center mb-6">
+            <TabsList className="glass">
+              <TabsTrigger value="radio" className="gap-2"><Radio className="h-4 w-4" /> Radio</TabsTrigger>
+              <TabsTrigger value="tv" className="gap-2"><Tv className="h-4 w-4" /> TV</TabsTrigger>
+            </TabsList>
+          </div>
 
-            {loadingCountries ? (
-              <div className="flex justify-center py-20">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {filteredCountries.map((c) => (
-                  <button
-                    key={c.iso_3166_1}
-                    onClick={() => loadStations(c)}
-                    className="group relative overflow-hidden rounded-2xl p-5 text-left transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-card)]"
-                    style={{ background: "var(--gradient-card)" }}
-                  >
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "var(--gradient-primary)", mixBlendMode: "overlay" }} />
-                    <div className="text-3xl mb-2">{flag(c.iso_3166_1)}</div>
-                    <div className="font-semibold truncate">{c.name}</div>
-                    <div className="text-xs text-muted-foreground">{c.stationcount.toLocaleString()} stations</div>
-                  </button>
-                ))}
-              </div>
+          {/* RADIO */}
+          <TabsContent value="radio">
+            {!country && (
+              <section className="text-center pt-4 pb-10">
+                <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-muted-foreground mb-6">
+                  <span className="h-px w-8 bg-border" /> Tune the planet <span className="h-px w-8 bg-border" />
+                </div>
+                <h2 className="text-4xl md:text-6xl font-black tracking-tight leading-[0.95] mb-4">
+                  Listen to the world,<br />
+                  <span className="bg-clip-text text-transparent" style={{ backgroundImage: "var(--gradient-primary)" }}>
+                    one country at a time.
+                  </span>
+                </h2>
+                <p className="text-muted-foreground max-w-xl mx-auto">
+                  Pick a country and instantly browse thousands of free radio stations — music, news, sports and more.
+                </p>
+              </section>
             )}
-          </>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-3">
-                <Button variant="ghost" size="sm" onClick={() => { setCountry(null); setStations([]); setSearch(""); }}>
-                  <Globe2 className="h-4 w-4 mr-2" /> All countries
-                </Button>
-                <div className="flex items-center gap-2">
-                  <span className="text-3xl">{flag(country.iso_3166_1)}</span>
-                  <div>
-                    <div className="font-bold leading-tight">{country.name}</div>
-                    <div className="text-xs text-muted-foreground">{stations.length} stations available</div>
+
+            {!country ? (
+              <>
+                <div className="relative max-w-md mx-auto mb-8">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search countries..."
+                    value={countrySearch}
+                    onChange={(e) => setCountrySearch(e.target.value)}
+                    className="pl-11 h-12 rounded-full glass border-border/60"
+                  />
+                </div>
+
+                {loadingCountries ? (
+                  <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                    {filteredCountries.map((c) => (
+                      <button
+                        key={c.iso_3166_1}
+                        onClick={() => loadStations(c)}
+                        className="group relative overflow-hidden rounded-2xl p-5 text-left transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-card)]"
+                        style={{ background: "var(--gradient-card)" }}
+                      >
+                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "var(--gradient-primary)", mixBlendMode: "overlay" }} />
+                        <div className="text-3xl mb-2">{flag(c.iso_3166_1)}</div>
+                        <div className="font-semibold truncate">{c.name}</div>
+                        <div className="text-xs text-muted-foreground">{c.stationcount.toLocaleString()} stations</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                  <div className="flex items-center gap-3">
+                    <Button variant="ghost" size="sm" onClick={() => { setCountry(null); setStations([]); setSearch(""); }}>
+                      <Globe2 className="h-4 w-4 mr-2" /> All countries
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-3xl">{flag(country.iso_3166_1)}</span>
+                      <div>
+                        <div className="font-bold leading-tight">{country.name}</div>
+                        <div className="text-xs text-muted-foreground">{filteredStations.length} stations</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="relative w-full sm:w-72">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Filter stations or genres..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="pl-11 h-11 rounded-full glass border-border/60"
+                    />
                   </div>
                 </div>
-              </div>
-              <div className="relative w-full sm:w-72">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Filter stations or genres..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-11 h-11 rounded-full glass border-border/60"
-                />
-              </div>
-            </div>
 
-            {loadingStations ? (
-              <div className="flex justify-center py-20">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {filteredStations.map((s) => {
-                  const isCur = current?.stationuuid === s.stationuuid;
-                  return (
-                    <Card
-                      key={s.stationuuid}
-                      onClick={() => play(s)}
-                      className={`group cursor-pointer p-4 flex items-center gap-3 border-border/50 transition-all hover:border-primary/60 hover:-translate-y-0.5 ${isCur ? "ring-1 ring-primary" : ""}`}
+                {/* Category chips */}
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {RADIO_CATEGORIES.map((cat) => {
+                    const Icon = cat.icon;
+                    const active = category === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setCategory(cat.id)}
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium border transition-all ${
+                          active
+                            ? "border-primary text-primary-foreground"
+                            : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
+                        }`}
+                        style={active ? { background: "var(--gradient-primary)" } : undefined}
+                      >
+                        <Icon className="h-3.5 w-3.5" /> {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {loadingStations ? (
+                  <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {filteredStations.map((s) => {
+                      const isCur = currentRadio?.stationuuid === s.stationuuid;
+                      return (
+                        <Card
+                          key={s.stationuuid}
+                          onClick={() => playRadio(s)}
+                          className={`group cursor-pointer p-4 flex items-center gap-3 border-border/50 transition-all hover:border-primary/60 hover:-translate-y-0.5 ${isCur ? "ring-1 ring-primary" : ""}`}
+                          style={{ background: "var(--gradient-card)" }}
+                        >
+                          <div className="relative shrink-0">
+                            <div className="h-14 w-14 rounded-xl bg-secondary grid place-items-center overflow-hidden">
+                              {s.favicon ? (
+                                <img src={s.favicon} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+                              ) : (
+                                <Radio className="h-6 w-6 text-muted-foreground" />
+                              )}
+                            </div>
+                            <div className="absolute inset-0 grid place-items-center bg-background/70 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
+                              {isCur && playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                            </div>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold truncate">{s.name.trim() || "Unknown"}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {s.tags?.split(",").slice(0, 3).join(" · ") || s.codec}
+                              {s.bitrate ? ` · ${s.bitrate}kbps` : ""}
+                            </div>
+                          </div>
+                          {isCur && playing && (
+                            <div className="flex items-end h-5">
+                              <span className="equalizer-bar" />
+                              <span className="equalizer-bar" style={{ animationDelay: "0.15s" }} />
+                              <span className="equalizer-bar" style={{ animationDelay: "0.3s" }} />
+                              <span className="equalizer-bar" style={{ animationDelay: "0.45s" }} />
+                            </div>
+                          )}
+                        </Card>
+                      );
+                    })}
+                    {filteredStations.length === 0 && (
+                      <div className="col-span-full text-center text-muted-foreground py-16">No stations match your filter.</div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </TabsContent>
+
+          {/* TV */}
+          <TabsContent value="tv">
+            {!tvCountry && (
+              <section className="text-center pt-4 pb-10">
+                <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-muted-foreground mb-6">
+                  <span className="h-px w-8 bg-border" /> Watch the planet <span className="h-px w-8 bg-border" />
+                </div>
+                <h2 className="text-4xl md:text-6xl font-black tracking-tight leading-[0.95] mb-4">
+                  Free TV channels,<br />
+                  <span className="bg-clip-text text-transparent" style={{ backgroundImage: "var(--gradient-primary)" }}>
+                    streamed worldwide.
+                  </span>
+                </h2>
+                <p className="text-muted-foreground max-w-xl mx-auto">
+                  Pick a country to browse free over-the-air & online TV channels, ready to play in your browser.
+                </p>
+              </section>
+            )}
+
+            {loadingTv ? (
+              <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+            ) : !tvCountry ? (
+              <>
+                <div className="relative max-w-md mx-auto mb-8">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search countries..."
+                    value={tvCountrySearch}
+                    onChange={(e) => setTvCountrySearch(e.target.value)}
+                    className="pl-11 h-12 rounded-full glass border-border/60"
+                  />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {filteredTvCountries.map((c) => (
+                    <button
+                      key={c.code}
+                      onClick={() => loadTvCountry(c)}
+                      className="group relative overflow-hidden rounded-2xl p-5 text-left transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-card)]"
                       style={{ background: "var(--gradient-card)" }}
                     >
-                      <div className="relative shrink-0">
-                        <div className="h-14 w-14 rounded-xl bg-secondary grid place-items-center overflow-hidden">
-                          {s.favicon ? (
-                            <img src={s.favicon} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
-                          ) : (
-                            <Radio className="h-6 w-6 text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="absolute inset-0 grid place-items-center bg-background/70 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
-                          {isCur && playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-                        </div>
+                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "var(--gradient-primary)", mixBlendMode: "overlay" }} />
+                      <div className="text-3xl mb-2">{c.flag || flag(c.code)}</div>
+                      <div className="font-semibold truncate">{c.name}</div>
+                      <div className="text-xs text-muted-foreground">{c.count.toLocaleString()} channels</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                  <div className="flex items-center gap-3">
+                    <Button variant="ghost" size="sm" onClick={() => { setTvCountry(null); setTvChannels([]); }}>
+                      <Globe2 className="h-4 w-4 mr-2" /> All countries
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-3xl">{tvCountry.flag || flag(tvCountry.code)}</span>
+                      <div>
+                        <div className="font-bold leading-tight">{tvCountry.name}</div>
+                        <div className="text-xs text-muted-foreground">{filteredTvChannels.length} channels</div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-semibold truncate">{s.name.trim() || "Unknown"}</div>
-                        <div className="text-xs text-muted-foreground truncate">
-                          {s.tags?.split(",").slice(0, 3).join(" · ") || s.codec}
-                          {s.bitrate ? ` · ${s.bitrate}kbps` : ""}
-                        </div>
-                      </div>
-                      {isCur && playing && (
-                        <div className="flex items-end h-5">
-                          <span className="equalizer-bar" />
-                          <span className="equalizer-bar" style={{ animationDelay: "0.15s" }} />
-                          <span className="equalizer-bar" style={{ animationDelay: "0.3s" }} />
-                          <span className="equalizer-bar" style={{ animationDelay: "0.45s" }} />
-                        </div>
-                      )}
-                    </Card>
-                  );
-                })}
-                {filteredStations.length === 0 && (
-                  <div className="col-span-full text-center text-muted-foreground py-16">No stations match your search.</div>
+                    </div>
+                  </div>
+                  <div className="relative w-full sm:w-72">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Filter channels..."
+                      value={tvSearch}
+                      onChange={(e) => setTvSearch(e.target.value)}
+                      className="pl-11 h-11 rounded-full glass border-border/60"
+                    />
+                  </div>
+                </div>
+
+                {currentTv && (
+                  <div className="mb-6 rounded-2xl overflow-hidden border border-border/60 bg-black aspect-video max-w-3xl mx-auto">
+                    <video ref={videoRef} controls playsInline className="w-full h-full"
+                      onPlaying={() => { setPlaying(true); setBuffering(false); }}
+                      onPause={() => setPlaying(false)}
+                      onWaiting={() => setBuffering(true)}
+                      onError={() => { setPlaying(false); setBuffering(false); }}
+                    />
+                  </div>
                 )}
-              </div>
+                {!currentTv && <video ref={videoRef} className="hidden" />}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {filteredTvChannels.map((c) => {
+                    const isCur = currentTv?.id === c.id;
+                    return (
+                      <Card
+                        key={c.id}
+                        onClick={() => playTv(c)}
+                        className={`group cursor-pointer p-4 flex items-center gap-3 border-border/50 transition-all hover:border-primary/60 hover:-translate-y-0.5 ${isCur ? "ring-1 ring-primary" : ""}`}
+                        style={{ background: "var(--gradient-card)" }}
+                      >
+                        <div className="relative shrink-0">
+                          <div className="h-14 w-14 rounded-xl bg-secondary grid place-items-center overflow-hidden">
+                            {c.logo ? (
+                              <img src={c.logo} alt="" className="h-full w-full object-contain p-1" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+                            ) : (
+                              <Tv className="h-6 w-6 text-muted-foreground" />
+                            )}
+                          </div>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold truncate">{c.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {c.categories.slice(0, 3).join(" · ") || "general"}
+                          </div>
+                        </div>
+                        {isCur && playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 opacity-60" />}
+                      </Card>
+                    );
+                  })}
+                  {filteredTvChannels.length === 0 && (
+                    <div className="col-span-full text-center text-muted-foreground py-16">No channels match your filter.</div>
+                  )}
+                </div>
+              </>
             )}
-          </>
-        )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Player */}
-      {current && (
+      {(currentRadio || currentTv) && (
         <div className="fixed bottom-0 inset-x-0 z-50 glass border-t border-border/60">
           <div className="container py-4 flex items-center gap-4">
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className="relative h-12 w-12 rounded-xl bg-secondary overflow-hidden shrink-0 grid place-items-center">
-                {current.favicon ? (
-                  <img src={current.favicon} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+                {currentRadio?.favicon ? (
+                  <img src={currentRadio.favicon} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+                ) : currentTv?.logo ? (
+                  <img src={currentTv.logo} alt="" className="h-full w-full object-contain p-1" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+                ) : currentTv ? (
+                  <Tv className="h-5 w-5" />
                 ) : (
                   <Radio className="h-5 w-5" />
                 )}
               </div>
               <div className="min-w-0">
-                <div className="font-semibold truncate">{current.name.trim()}</div>
+                <div className="font-semibold truncate">{(currentRadio?.name || currentTv?.name || "").trim()}</div>
                 <div className="text-xs text-muted-foreground truncate">
-                  {flag(country?.iso_3166_1 || current.country.slice(0, 2))} {current.country} · {current.codec} {current.bitrate ? `${current.bitrate}kbps` : ""}
+                  {currentRadio
+                    ? `${flag(country?.iso_3166_1 || currentRadio.country.slice(0, 2))} ${currentRadio.country} · ${currentRadio.codec}${currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}`
+                    : currentTv
+                    ? `${flag(currentTv.country)} ${currentTv.categories.slice(0, 2).join(" · ") || "TV"}`
+                    : ""}
                 </div>
               </div>
             </div>
 
             <Button
               size="icon"
-              onClick={() => play(current)}
+              onClick={togglePlay}
               className="h-12 w-12 rounded-full shrink-0"
               style={{ background: "var(--gradient-primary)", animation: playing ? "pulse-ring 1.6s infinite" : undefined }}
             >
