@@ -412,12 +412,28 @@ const Index = () => {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
+    // Cap quality based on detected network speed for stable playback
+    const capLevel = netQuality === "low" ? 0 : netQuality === "mid" ? 2 : -1;
+    const maxBitrate = netQuality === "low" ? 500_000 : netQuality === "mid" ? 1_500_000 : 0;
     if (url.includes(".m3u8") && Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true, manifestLoadingMaxRetry: 1, fragLoadingMaxRetry: 2 });
+      const hls = new Hls({
+        enableWorker: true,
+        manifestLoadingMaxRetry: 1,
+        fragLoadingMaxRetry: 2,
+        capLevelToPlayerSize: true,
+        startLevel: capLevel === -1 ? -1 : capLevel,
+        maxMaxBufferLength: netQuality === "low" ? 10 : 30,
+        abrEwmaDefaultEstimate: netQuality === "low" ? 300_000 : netQuality === "mid" ? 1_000_000 : 2_500_000,
+      });
       hlsRef.current = hls;
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (capLevel >= 0 && hls.levels.length > capLevel) hls.currentLevel = capLevel;
+        if (maxBitrate > 0) {
+          const idx = hls.levels.findIndex((l) => l.bitrate > maxBitrate);
+          if (idx > 0) hls.autoLevelCapping = idx - 1;
+        }
         video.play().catch(() => tryNextSource("autoplay blocked"));
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
@@ -444,7 +460,8 @@ const Index = () => {
     setCurrentTv(null);
     setCurrentRadio(s);
     setPlayError(null);
-    const urls = Array.from(new Set([s.url_resolved, s.url].filter(Boolean)));
+    const baseUrls = Array.from(new Set([s.url_resolved, s.url].filter(Boolean)));
+    const urls = orderUrlsWithCache(s.stationuuid, baseUrls);
     playbackRef.current = { type: "radio", urls, idx: 0, attempt: 1 };
     startRadioUrl(urls[0]);
     fetch(`${apiBase.current}/json/url/${s.stationuuid}`).catch(() => {});
@@ -461,7 +478,8 @@ const Index = () => {
     setCurrentRadio(null);
     setCurrentTv(ch);
     setPlayError(null);
-    const urls = ch.urls.length ? ch.urls : [];
+    const baseUrls = ch.urls.length ? ch.urls : [];
+    const urls = orderUrlsWithCache(ch.id, baseUrls);
     if (!urls.length) {
       setPlayError("No stream URLs available.");
       return;
@@ -473,6 +491,47 @@ const Index = () => {
   const togglePlay = () => {
     if (currentRadio) playRadio(currentRadio);
     else if (currentTv) playTv(currentTv);
+  };
+
+  // Skip to next/prev station/channel within the current filtered list
+  const skipStation = (dir: 1 | -1) => {
+    if (currentRadio) {
+      const list = filteredStations;
+      const i = list.findIndex((s) => s.stationuuid === currentRadio.stationuuid);
+      if (i < 0 || list.length === 0) return;
+      const next = list[(i + dir + list.length) % list.length];
+      playRadio(next);
+    } else if (currentTv) {
+      const list = filteredTvChannels;
+      const i = list.findIndex((c) => c.id === currentTv.id);
+      if (i < 0 || list.length === 0) return;
+      const next = list[(i + dir + list.length) % list.length];
+      playTv(next);
+    }
+  };
+
+  const toggleFullscreen = () => {
+    const el = playerWrapRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    } else {
+      el.requestFullscreen?.();
+    }
+  };
+
+  const onPlayingSuccess = () => {
+    setPlaying(true);
+    setBuffering(false);
+    setPlayError(null);
+    clearPlaybackTimer();
+    // Cache the URL that successfully started playing
+    const p = playbackRef.current;
+    if (p) {
+      const url = p.urls[p.idx];
+      if (currentRadio) saveCachedUrl(currentRadio.stationuuid, url);
+      else if (currentTv) saveCachedUrl(currentTv.id, url);
+    }
   };
 
   useEffect(() => {
