@@ -5,18 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Play, Pause, Search, Radio, Volume2, VolumeX, Globe2, Loader2, Tv, Newspaper, Trophy, Music2, Sparkles } from "lucide-react";
+import { Play, Pause, Search, Radio, Volume2, VolumeX, Globe2, Loader2, Tv, Newspaper, Trophy, Music2, Sparkles, Layers, MapPin } from "lucide-react";
 
 type Country = { name: string; iso_3166_1: string; stationcount: number };
 type Station = {
   stationuuid: string;
   name: string;
+  url: string;
   url_resolved: string;
   favicon: string;
   tags: string;
   bitrate: number;
   codec: string;
   country: string;
+  countrycode: string;
   language: string;
 };
 
@@ -26,7 +28,7 @@ type TvChannel = {
   country: string;
   categories: string[];
   logo: string;
-  url: string;
+  urls: string[];
 };
 type TvCountry = { code: string; name: string; flag: string; count: number };
 
@@ -43,6 +45,26 @@ const RADIO_CATEGORIES = [
   { id: "music", label: "Music", icon: Music2, tags: ["music", "pop", "rock", "hits", "dance", "jazz", "classical"] },
 ];
 
+// Worldwide-browsable category tags
+const RADIO_GLOBAL_CATEGORIES: { id: string; label: string; tag: string }[] = [
+  { id: "news", label: "News", tag: "news" },
+  { id: "talk", label: "Talk", tag: "talk" },
+  { id: "sports", label: "Sports", tag: "sports" },
+  { id: "pop", label: "Pop", tag: "pop" },
+  { id: "rock", label: "Rock", tag: "rock" },
+  { id: "dance", label: "Dance", tag: "dance" },
+  { id: "electronic", label: "Electronic", tag: "electronic" },
+  { id: "jazz", label: "Jazz", tag: "jazz" },
+  { id: "classical", label: "Classical", tag: "classical" },
+  { id: "hiphop", label: "Hip-Hop", tag: "hiphop" },
+  { id: "reggae", label: "Reggae", tag: "reggae" },
+  { id: "country", label: "Country", tag: "country" },
+  { id: "latin", label: "Latin", tag: "latin" },
+  { id: "oldies", label: "Oldies", tag: "oldies" },
+  { id: "religious", label: "Religious", tag: "religious" },
+  { id: "christian", label: "Christian", tag: "christian" },
+];
+
 const flag = (iso: string) =>
   iso
     .toUpperCase()
@@ -55,13 +77,25 @@ const Index = () => {
   const [muted, setMuted] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [playError, setPlayError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
 
+  // playback retry control
+  const playbackRef = useRef<{
+    type: "radio" | "tv";
+    urls: string[];
+    idx: number;
+    timer?: number;
+    attempt: number;
+  } | null>(null);
+
   // RADIO state
+  const [browseRadioBy, setBrowseRadioBy] = useState<"country" | "category">("country");
   const [countries, setCountries] = useState<Country[]>([]);
   const [country, setCountry] = useState<Country | null>(null);
+  const [radioCategory, setRadioCategory] = useState<{ id: string; label: string; tag: string } | null>(null);
   const [stations, setStations] = useState<Station[]>([]);
   const [search, setSearch] = useState("");
   const [countrySearch, setCountrySearch] = useState("");
@@ -72,8 +106,11 @@ const Index = () => {
   const apiBase = useRef(API_BASES[0]);
 
   // TV state
+  const [browseTvBy, setBrowseTvBy] = useState<"country" | "category">("country");
   const [tvCountries, setTvCountries] = useState<TvCountry[]>([]);
   const [tvCountry, setTvCountry] = useState<TvCountry | null>(null);
+  const [tvCategoryList, setTvCategoryList] = useState<{ id: string; name: string; count: number }[]>([]);
+  const [tvCategory, setTvCategory] = useState<{ id: string; name: string; count: number } | null>(null);
   const [tvChannels, setTvChannels] = useState<TvChannel[]>([]);
   const [tvAll, setTvAll] = useState<TvChannel[]>([]);
   const [tvSearch, setTvSearch] = useState("");
@@ -123,9 +160,13 @@ const Index = () => {
           fetch("https://iptv-org.github.io/api/streams.json").then((r) => r.json()),
           fetch("https://iptv-org.github.io/api/countries.json").then((r) => r.json()),
         ]);
-        const streamMap = new Map<string, string>();
+        // Multiple streams per channel — collect them all for fallback retry
+        const streamMap = new Map<string, string[]>();
         for (const s of streamsRes) {
-          if (s.channel && !streamMap.has(s.channel)) streamMap.set(s.channel, s.url);
+          if (!s.channel || !s.url) continue;
+          const arr = streamMap.get(s.channel) || [];
+          if (!arr.includes(s.url)) arr.push(s.url);
+          streamMap.set(s.channel, arr);
         }
         const countryMap = new Map<string, { name: string; flag: string }>();
         for (const c of countriesRes) countryMap.set(c.code, { name: c.name, flag: c.flag });
@@ -138,7 +179,7 @@ const Index = () => {
             country: c.country,
             categories: c.categories || [],
             logo: c.logo,
-            url: streamMap.get(c.id)!,
+            urls: streamMap.get(c.id)!,
           }));
 
         const counts = new Map<string, number>();
@@ -150,8 +191,19 @@ const Index = () => {
         }
         cList.sort((a, b) => b.count - a.count);
 
+        // Build category list
+        const catCounts = new Map<string, number>();
+        for (const ch of channels) {
+          const cats = ch.categories.length ? ch.categories : ["general"];
+          for (const cat of cats) catCounts.set(cat, (catCounts.get(cat) || 0) + 1);
+        }
+        const catList = Array.from(catCounts.entries())
+          .map(([id, count]) => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1), count }))
+          .sort((a, b) => b.count - a.count);
+
         setTvAll(channels);
         setTvCountries(cList);
+        setTvCategoryList(catList);
       } catch (e) {
         console.error("Failed to load TV data", e);
       } finally {
@@ -162,6 +214,7 @@ const Index = () => {
 
   const loadStations = async (c: Country) => {
     setCountry(c);
+    setRadioCategory(null);
     setStations([]);
     setLoadingStations(true);
     setCategory("all");
@@ -177,9 +230,42 @@ const Index = () => {
     }
   };
 
+  const loadStationsByCategory = async (cat: { id: string; label: string; tag: string }) => {
+    setRadioCategory(cat);
+    setCountry(null);
+    setStations([]);
+    setLoadingStations(true);
+    setCategory("all");
+    setSearch("");
+    try {
+      const data: Station[] = await fetchWithFallback(
+        `/json/stations/search?tag=${encodeURIComponent(cat.tag)}&hidebroken=true&order=clickcount&reverse=true&limit=600`
+      );
+      setStations(data.filter((s) => s.url_resolved));
+    } catch (e) {
+      console.error("Failed to load category stations", e);
+    } finally {
+      setLoadingStations(false);
+    }
+  };
+
   const loadTvCountry = (c: TvCountry) => {
     setTvCountry(c);
+    setTvCategory(null);
     setTvChannels(tvAll.filter((ch) => ch.country === c.code));
+    setTvSearch("");
+  };
+
+  const loadTvCategory = (cat: { id: string; name: string; count: number }) => {
+    setTvCategory(cat);
+    setTvCountry(null);
+    setTvChannels(
+      tvAll.filter((ch) =>
+        cat.id === "general"
+          ? ch.categories.length === 0 || ch.categories.includes("general")
+          : ch.categories.includes(cat.id)
+      )
+    );
     setTvSearch("");
   };
 
@@ -210,7 +296,16 @@ const Index = () => {
     );
   }, [tvChannels, tvSearch]);
 
+  // ===== Playback with multi-URL fallback retry =====
+  const clearPlaybackTimer = () => {
+    if (playbackRef.current?.timer) {
+      clearTimeout(playbackRef.current.timer);
+      playbackRef.current.timer = undefined;
+    }
+  };
+
   const stopAll = () => {
+    clearPlaybackTimer();
     audioRef.current?.pause();
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -223,6 +318,73 @@ const Index = () => {
     }
   };
 
+  const armReadinessCheck = (kind: "radio" | "tv") => {
+    clearPlaybackTimer();
+    const el = kind === "radio" ? audioRef.current : videoRef.current;
+    if (!el || !playbackRef.current) return;
+    // Stream-quality check: if not playing within 9s, try next URL
+    playbackRef.current.timer = window.setTimeout(() => {
+      const isReady = el && !el.paused && el.readyState >= 2;
+      if (!isReady) tryNextSource("Stream not ready");
+    }, 9000);
+  };
+
+  const tryNextSource = (reason?: string) => {
+    const p = playbackRef.current;
+    if (!p) return;
+    clearPlaybackTimer();
+    if (p.idx + 1 >= p.urls.length) {
+      setPlaying(false);
+      setBuffering(false);
+      setPlayError(`Unable to play this stream${reason ? ` (${reason})` : ""}. All ${p.urls.length} mirror(s) failed.`);
+      return;
+    }
+    p.idx += 1;
+    p.attempt += 1;
+    setPlayError(`Retrying… (${p.idx + 1}/${p.urls.length})`);
+    if (p.type === "radio") startRadioUrl(p.urls[p.idx]);
+    else startTvUrl(p.urls[p.idx]);
+  };
+
+  const startRadioUrl = (url: string) => {
+    const a = audioRef.current;
+    if (!a) return;
+    setBuffering(true);
+    a.src = url;
+    a.load();
+    a.play().catch(() => tryNextSource("autoplay blocked or bad source"));
+    armReadinessCheck("radio");
+  };
+
+  const startTvUrl = (url: string) => {
+    const video = videoRef.current;
+    if (!video) return;
+    setBuffering(true);
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    if (url.includes(".m3u8") && Hls.isSupported()) {
+      const hls = new Hls({ enableWorker: true, manifestLoadingMaxRetry: 1, fragLoadingMaxRetry: 2 });
+      hlsRef.current = hls;
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => tryNextSource("autoplay blocked"));
+      });
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) tryNextSource(data.details || "HLS error");
+      });
+    } else if (video.canPlayType("application/vnd.apple.mpegurl") || !url.includes(".m3u8")) {
+      video.src = url;
+      video.play().catch(() => tryNextSource("autoplay blocked or bad source"));
+    } else {
+      tryNextSource("HLS unsupported");
+      return;
+    }
+    armReadinessCheck("tv");
+  };
+
   const playRadio = (s: Station) => {
     if (!audioRef.current) return;
     if (currentRadio?.stationuuid === s.stationuuid && playing) {
@@ -233,12 +395,10 @@ const Index = () => {
     stopAll();
     setCurrentTv(null);
     setCurrentRadio(s);
-    setBuffering(true);
-    audioRef.current.src = s.url_resolved;
-    audioRef.current.play().then(() => setPlaying(true)).catch(() => {
-      setPlaying(false);
-      setBuffering(false);
-    });
+    setPlayError(null);
+    const urls = Array.from(new Set([s.url_resolved, s.url].filter(Boolean)));
+    playbackRef.current = { type: "radio", urls, idx: 0, attempt: 1 };
+    startRadioUrl(urls[0]);
     fetch(`${apiBase.current}/json/url/${s.stationuuid}`).catch(() => {});
   };
 
@@ -252,23 +412,14 @@ const Index = () => {
     stopAll();
     setCurrentRadio(null);
     setCurrentTv(ch);
-    setBuffering(true);
-    const video = videoRef.current;
-    if (ch.url.includes(".m3u8") && Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true });
-      hlsRef.current = hls;
-      hls.loadSource(ch.url);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.play().then(() => setPlaying(true)).catch(() => { setPlaying(false); setBuffering(false); });
-      });
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) { setPlaying(false); setBuffering(false); }
-      });
-    } else {
-      video.src = ch.url;
-      video.play().then(() => setPlaying(true)).catch(() => { setPlaying(false); setBuffering(false); });
+    setPlayError(null);
+    const urls = ch.urls.length ? ch.urls : [];
+    if (!urls.length) {
+      setPlayError("No stream URLs available.");
+      return;
     }
+    playbackRef.current = { type: "tv", urls, idx: 0, attempt: 1 };
+    startTvUrl(urls[0]);
   };
 
   const togglePlay = () => {
@@ -282,14 +433,18 @@ const Index = () => {
     if (videoRef.current) videoRef.current.volume = v;
   }, [volume, muted]);
 
+  const inRadioBrowse = !country && !radioCategory;
+  const inTvBrowse = !tvCountry && !tvCategory;
+
   return (
     <div className="min-h-screen pb-40">
       <audio
         ref={audioRef}
-        onPlaying={() => { setPlaying(true); setBuffering(false); }}
+        onPlaying={() => { setPlaying(true); setBuffering(false); setPlayError(null); clearPlaybackTimer(); }}
         onPause={() => setPlaying(false)}
         onWaiting={() => setBuffering(true)}
-        onError={() => { setPlaying(false); setBuffering(false); }}
+        onError={() => tryNextSource("audio error")}
+        onStalled={() => { /* let readiness timer handle */ }}
       />
 
       {/* Header */}
@@ -319,68 +474,119 @@ const Index = () => {
 
           {/* RADIO */}
           <TabsContent value="radio">
-            {!country && (
-              <section className="text-center pt-4 pb-10">
+            {inRadioBrowse && (
+              <section className="text-center pt-4 pb-8">
                 <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-muted-foreground mb-6">
                   <span className="h-px w-8 bg-border" /> Tune the planet <span className="h-px w-8 bg-border" />
                 </div>
                 <h2 className="text-4xl md:text-6xl font-black tracking-tight leading-[0.95] mb-4">
                   Listen to the world,<br />
                   <span className="bg-clip-text text-transparent" style={{ backgroundImage: "var(--gradient-primary)" }}>
-                    one country at a time.
+                    by country or by vibe.
                   </span>
                 </h2>
                 <p className="text-muted-foreground max-w-xl mx-auto">
-                  Pick a country and instantly browse thousands of free radio stations — music, news, sports and more.
+                  Pick a country, or browse by category — thousands of free stations, ready to play.
                 </p>
               </section>
             )}
 
-            {!country ? (
-              <>
-                <div className="relative max-w-md mx-auto mb-8">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search countries..."
-                    value={countrySearch}
-                    onChange={(e) => setCountrySearch(e.target.value)}
-                    className="pl-11 h-12 rounded-full glass border-border/60"
-                  />
+            {inRadioBrowse && (
+              <div className="flex justify-center mb-6">
+                <div className="inline-flex rounded-full border border-border/60 p-1 glass">
+                  <button
+                    onClick={() => setBrowseRadioBy("country")}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${browseRadioBy === "country" ? "text-primary-foreground" : "text-muted-foreground"}`}
+                    style={browseRadioBy === "country" ? { background: "var(--gradient-primary)" } : undefined}
+                  >
+                    <MapPin className="h-3.5 w-3.5" /> By Country
+                  </button>
+                  <button
+                    onClick={() => setBrowseRadioBy("category")}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${browseRadioBy === "category" ? "text-primary-foreground" : "text-muted-foreground"}`}
+                    style={browseRadioBy === "category" ? { background: "var(--gradient-primary)" } : undefined}
+                  >
+                    <Layers className="h-3.5 w-3.5" /> By Category
+                  </button>
                 </div>
+              </div>
+            )}
 
-                {loadingCountries ? (
-                  <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                    {filteredCountries.map((c) => (
-                      <button
-                        key={c.iso_3166_1}
-                        onClick={() => loadStations(c)}
-                        className="group relative overflow-hidden rounded-2xl p-5 text-left transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-card)]"
-                        style={{ background: "var(--gradient-card)" }}
-                      >
-                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "var(--gradient-primary)", mixBlendMode: "overlay" }} />
-                        <div className="text-3xl mb-2">{flag(c.iso_3166_1)}</div>
-                        <div className="font-semibold truncate">{c.name}</div>
-                        <div className="text-xs text-muted-foreground">{c.stationcount.toLocaleString()} stations</div>
-                      </button>
-                    ))}
+            {inRadioBrowse ? (
+              browseRadioBy === "country" ? (
+                <>
+                  <div className="relative max-w-md mx-auto mb-8">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search countries..."
+                      value={countrySearch}
+                      onChange={(e) => setCountrySearch(e.target.value)}
+                      className="pl-11 h-12 rounded-full glass border-border/60"
+                    />
                   </div>
-                )}
-              </>
+
+                  {loadingCountries ? (
+                    <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                      {filteredCountries.map((c) => (
+                        <button
+                          key={c.iso_3166_1}
+                          onClick={() => loadStations(c)}
+                          className="group relative overflow-hidden rounded-2xl p-5 text-left transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-card)]"
+                          style={{ background: "var(--gradient-card)" }}
+                        >
+                          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "var(--gradient-primary)", mixBlendMode: "overlay" }} />
+                          <div className="text-3xl mb-2">{flag(c.iso_3166_1)}</div>
+                          <div className="font-semibold truncate">{c.name}</div>
+                          <div className="text-xs text-muted-foreground">{c.stationcount.toLocaleString()} stations</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {RADIO_GLOBAL_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => loadStationsByCategory(cat)}
+                      className="group relative overflow-hidden rounded-2xl p-5 text-left transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-card)]"
+                      style={{ background: "var(--gradient-card)" }}
+                    >
+                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "var(--gradient-primary)", mixBlendMode: "overlay" }} />
+                      <Layers className="h-6 w-6 mb-2 text-primary" />
+                      <div className="font-semibold truncate">{cat.label}</div>
+                      <div className="text-xs text-muted-foreground">Worldwide stations</div>
+                    </button>
+                  ))}
+                </div>
+              )
             ) : (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
                   <div className="flex items-center gap-3">
-                    <Button variant="ghost" size="sm" onClick={() => { setCountry(null); setStations([]); setSearch(""); }}>
-                      <Globe2 className="h-4 w-4 mr-2" /> All countries
+                    <Button variant="ghost" size="sm" onClick={() => { setCountry(null); setRadioCategory(null); setStations([]); setSearch(""); }}>
+                      <Globe2 className="h-4 w-4 mr-2" /> Browse all
                     </Button>
                     <div className="flex items-center gap-2">
-                      <span className="text-3xl">{flag(country.iso_3166_1)}</span>
-                      <div>
-                        <div className="font-bold leading-tight">{country.name}</div>
-                        <div className="text-xs text-muted-foreground">{filteredStations.length} stations</div>
-                      </div>
+                      {country ? (
+                        <>
+                          <span className="text-3xl">{flag(country.iso_3166_1)}</span>
+                          <div>
+                            <div className="font-bold leading-tight">{country.name}</div>
+                            <div className="text-xs text-muted-foreground">{filteredStations.length} stations</div>
+                          </div>
+                        </>
+                      ) : radioCategory ? (
+                        <>
+                          <Layers className="h-7 w-7 text-primary" />
+                          <div>
+                            <div className="font-bold leading-tight">{radioCategory.label}</div>
+                            <div className="text-xs text-muted-foreground">{filteredStations.length} stations · worldwide</div>
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                   <div className="relative w-full sm:w-72">
@@ -394,27 +600,29 @@ const Index = () => {
                   </div>
                 </div>
 
-                {/* Category chips */}
-                <div className="flex flex-wrap gap-2 mb-6">
-                  {RADIO_CATEGORIES.map((cat) => {
-                    const Icon = cat.icon;
-                    const active = category === cat.id;
-                    return (
-                      <button
-                        key={cat.id}
-                        onClick={() => setCategory(cat.id)}
-                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium border transition-all ${
-                          active
-                            ? "border-primary text-primary-foreground"
-                            : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
-                        }`}
-                        style={active ? { background: "var(--gradient-primary)" } : undefined}
-                      >
-                        <Icon className="h-3.5 w-3.5" /> {cat.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Sub-category chips (only relevant when browsing by country) */}
+                {country && (
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {RADIO_CATEGORIES.map((cat) => {
+                      const Icon = cat.icon;
+                      const active = category === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          onClick={() => setCategory(cat.id)}
+                          className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium border transition-all ${
+                            active
+                              ? "border-primary text-primary-foreground"
+                              : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
+                          }`}
+                          style={active ? { background: "var(--gradient-primary)" } : undefined}
+                        >
+                          <Icon className="h-3.5 w-3.5" /> {cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {loadingStations ? (
                   <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
@@ -444,6 +652,7 @@ const Index = () => {
                           <div className="min-w-0 flex-1">
                             <div className="font-semibold truncate">{s.name.trim() || "Unknown"}</div>
                             <div className="text-xs text-muted-foreground truncate">
+                              {s.countrycode ? `${flag(s.countrycode)} ` : ""}
                               {s.tags?.split(",").slice(0, 3).join(" · ") || s.codec}
                               {s.bitrate ? ` · ${s.bitrate}kbps` : ""}
                             </div>
@@ -470,65 +679,116 @@ const Index = () => {
 
           {/* TV */}
           <TabsContent value="tv">
-            {!tvCountry && (
-              <section className="text-center pt-4 pb-10">
+            {inTvBrowse && (
+              <section className="text-center pt-4 pb-8">
                 <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-muted-foreground mb-6">
                   <span className="h-px w-8 bg-border" /> Watch the planet <span className="h-px w-8 bg-border" />
                 </div>
                 <h2 className="text-4xl md:text-6xl font-black tracking-tight leading-[0.95] mb-4">
                   Free TV channels,<br />
                   <span className="bg-clip-text text-transparent" style={{ backgroundImage: "var(--gradient-primary)" }}>
-                    streamed worldwide.
+                    by country or by genre.
                   </span>
                 </h2>
                 <p className="text-muted-foreground max-w-xl mx-auto">
-                  Pick a country to browse free over-the-air & online TV channels, ready to play in your browser.
+                  Browse free over-the-air & online TV channels — pick a country, or jump straight to a category.
                 </p>
               </section>
             )}
 
+            {inTvBrowse && !loadingTv && (
+              <div className="flex justify-center mb-6">
+                <div className="inline-flex rounded-full border border-border/60 p-1 glass">
+                  <button
+                    onClick={() => setBrowseTvBy("country")}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${browseTvBy === "country" ? "text-primary-foreground" : "text-muted-foreground"}`}
+                    style={browseTvBy === "country" ? { background: "var(--gradient-primary)" } : undefined}
+                  >
+                    <MapPin className="h-3.5 w-3.5" /> By Country
+                  </button>
+                  <button
+                    onClick={() => setBrowseTvBy("category")}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${browseTvBy === "category" ? "text-primary-foreground" : "text-muted-foreground"}`}
+                    style={browseTvBy === "category" ? { background: "var(--gradient-primary)" } : undefined}
+                  >
+                    <Layers className="h-3.5 w-3.5" /> By Category
+                  </button>
+                </div>
+              </div>
+            )}
+
             {loadingTv ? (
               <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-            ) : !tvCountry ? (
-              <>
-                <div className="relative max-w-md mx-auto mb-8">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search countries..."
-                    value={tvCountrySearch}
-                    onChange={(e) => setTvCountrySearch(e.target.value)}
-                    className="pl-11 h-12 rounded-full glass border-border/60"
-                  />
-                </div>
+            ) : inTvBrowse ? (
+              browseTvBy === "country" ? (
+                <>
+                  <div className="relative max-w-md mx-auto mb-8">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search countries..."
+                      value={tvCountrySearch}
+                      onChange={(e) => setTvCountrySearch(e.target.value)}
+                      className="pl-11 h-12 rounded-full glass border-border/60"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                    {filteredTvCountries.map((c) => (
+                      <button
+                        key={c.code}
+                        onClick={() => loadTvCountry(c)}
+                        className="group relative overflow-hidden rounded-2xl p-5 text-left transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-card)]"
+                        style={{ background: "var(--gradient-card)" }}
+                      >
+                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "var(--gradient-primary)", mixBlendMode: "overlay" }} />
+                        <div className="text-3xl mb-2">{c.flag || flag(c.code)}</div>
+                        <div className="font-semibold truncate">{c.name}</div>
+                        <div className="text-xs text-muted-foreground">{c.count.toLocaleString()} channels</div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  {filteredTvCountries.map((c) => (
+                  {tvCategoryList.map((cat) => (
                     <button
-                      key={c.code}
-                      onClick={() => loadTvCountry(c)}
+                      key={cat.id}
+                      onClick={() => loadTvCategory(cat)}
                       className="group relative overflow-hidden rounded-2xl p-5 text-left transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-card)]"
                       style={{ background: "var(--gradient-card)" }}
                     >
                       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "var(--gradient-primary)", mixBlendMode: "overlay" }} />
-                      <div className="text-3xl mb-2">{c.flag || flag(c.code)}</div>
-                      <div className="font-semibold truncate">{c.name}</div>
-                      <div className="text-xs text-muted-foreground">{c.count.toLocaleString()} channels</div>
+                      <Layers className="h-6 w-6 mb-2 text-primary" />
+                      <div className="font-semibold truncate">{cat.name}</div>
+                      <div className="text-xs text-muted-foreground">{cat.count.toLocaleString()} channels</div>
                     </button>
                   ))}
                 </div>
-              </>
+              )
             ) : (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                   <div className="flex items-center gap-3">
-                    <Button variant="ghost" size="sm" onClick={() => { setTvCountry(null); setTvChannels([]); }}>
-                      <Globe2 className="h-4 w-4 mr-2" /> All countries
+                    <Button variant="ghost" size="sm" onClick={() => { setTvCountry(null); setTvCategory(null); setTvChannels([]); }}>
+                      <Globe2 className="h-4 w-4 mr-2" /> Browse all
                     </Button>
                     <div className="flex items-center gap-2">
-                      <span className="text-3xl">{tvCountry.flag || flag(tvCountry.code)}</span>
-                      <div>
-                        <div className="font-bold leading-tight">{tvCountry.name}</div>
-                        <div className="text-xs text-muted-foreground">{filteredTvChannels.length} channels</div>
-                      </div>
+                      {tvCountry ? (
+                        <>
+                          <span className="text-3xl">{tvCountry.flag || flag(tvCountry.code)}</span>
+                          <div>
+                            <div className="font-bold leading-tight">{tvCountry.name}</div>
+                            <div className="text-xs text-muted-foreground">{filteredTvChannels.length} channels</div>
+                          </div>
+                        </>
+                      ) : tvCategory ? (
+                        <>
+                          <Layers className="h-7 w-7 text-primary" />
+                          <div>
+                            <div className="font-bold leading-tight">{tvCategory.name}</div>
+                            <div className="text-xs text-muted-foreground">{filteredTvChannels.length} channels · worldwide</div>
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                   <div className="relative w-full sm:w-72">
@@ -545,10 +805,10 @@ const Index = () => {
                 {currentTv && (
                   <div className="mb-6 rounded-2xl overflow-hidden border border-border/60 bg-black aspect-video max-w-3xl mx-auto">
                     <video ref={videoRef} controls playsInline className="w-full h-full"
-                      onPlaying={() => { setPlaying(true); setBuffering(false); }}
+                      onPlaying={() => { setPlaying(true); setBuffering(false); setPlayError(null); clearPlaybackTimer(); }}
                       onPause={() => setPlaying(false)}
                       onWaiting={() => setBuffering(true)}
-                      onError={() => { setPlaying(false); setBuffering(false); }}
+                      onError={() => tryNextSource("video error")}
                     />
                   </div>
                 )}
@@ -576,7 +836,8 @@ const Index = () => {
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold truncate">{c.name}</div>
                           <div className="text-xs text-muted-foreground truncate">
-                            {c.categories.slice(0, 3).join(" · ") || "general"}
+                            {flag(c.country)} {c.categories.slice(0, 2).join(" · ") || "general"}
+                            {c.urls.length > 1 ? ` · ${c.urls.length} mirrors` : ""}
                           </div>
                         </div>
                         {isCur && playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 opacity-60" />}
@@ -612,11 +873,13 @@ const Index = () => {
               <div className="min-w-0">
                 <div className="font-semibold truncate">{(currentRadio?.name || currentTv?.name || "").trim()}</div>
                 <div className="text-xs text-muted-foreground truncate">
-                  {currentRadio
-                    ? `${flag(country?.iso_3166_1 || currentRadio.country.slice(0, 2))} ${currentRadio.country} · ${currentRadio.codec}${currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}`
-                    : currentTv
-                    ? `${flag(currentTv.country)} ${currentTv.categories.slice(0, 2).join(" · ") || "TV"}`
-                    : ""}
+                  {playError ? (
+                    <span className="text-destructive">{playError}</span>
+                  ) : currentRadio ? (
+                    `${currentRadio.countrycode ? flag(currentRadio.countrycode) + " " : ""}${currentRadio.country} · ${currentRadio.codec}${currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}`
+                  ) : currentTv ? (
+                    `${flag(currentTv.country)} ${currentTv.categories.slice(0, 2).join(" · ") || "TV"}${currentTv.urls.length > 1 ? ` · mirror ${(playbackRef.current?.idx ?? 0) + 1}/${currentTv.urls.length}` : ""}`
+                  ) : ""}
                 </div>
               </div>
             </div>
