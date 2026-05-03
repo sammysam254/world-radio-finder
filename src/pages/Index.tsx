@@ -70,6 +70,40 @@ const flag = (iso: string) =>
     .toUpperCase()
     .replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
 
+// ===== URL cache (last successfully playing URL per station/channel) =====
+const URL_CACHE_KEY = "wavebox.urlCache.v1";
+const loadUrlCache = (): Record<string, string> => {
+  try { return JSON.parse(localStorage.getItem(URL_CACHE_KEY) || "{}"); } catch { return {}; }
+};
+const saveCachedUrl = (id: string, url: string) => {
+  try {
+    const c = loadUrlCache();
+    c[id] = url;
+    localStorage.setItem(URL_CACHE_KEY, JSON.stringify(c));
+  } catch {}
+};
+const orderUrlsWithCache = (id: string, urls: string[]) => {
+  const cached = loadUrlCache()[id];
+  if (!cached || !urls.includes(cached)) return urls;
+  return [cached, ...urls.filter((u) => u !== cached)];
+};
+
+// ===== Network quality detection =====
+type NetQuality = "low" | "mid" | "high";
+const detectNetQuality = (): NetQuality => {
+  const c: any = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+  if (!c) return "high";
+  const t = c.effectiveType as string | undefined;
+  if (c.saveData) return "low";
+  if (t === "slow-2g" || t === "2g") return "low";
+  if (t === "3g") return "mid";
+  if (typeof c.downlink === "number") {
+    if (c.downlink < 1) return "low";
+    if (c.downlink < 3) return "mid";
+  }
+  return "high";
+};
+
 const Index = () => {
   // shared player
   const [mode, setMode] = useState<"radio" | "tv">("radio");
