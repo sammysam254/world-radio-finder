@@ -513,6 +513,7 @@ const Index = () => {
       playTv(next);
     }
   };
+  skipStationRef.current = skipStation;
 
   const toggleFullscreen = () => {
     const el = playerWrapRef.current;
