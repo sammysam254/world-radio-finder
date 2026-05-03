@@ -384,7 +384,9 @@ const Index = () => {
     if (p.idx + 1 >= p.urls.length) {
       setPlaying(false);
       setBuffering(false);
-      setPlayError(`Unable to play this stream${reason ? ` (${reason})` : ""}. All ${p.urls.length} mirror(s) failed.`);
+      setPlayError(`All mirrors failed${reason ? ` (${reason})` : ""}. Skipping to next…`);
+      // Auto-advance to the next station/channel in the list
+      window.setTimeout(() => skipStationRef.current?.(1), 600);
       return;
     }
     p.idx += 1;
