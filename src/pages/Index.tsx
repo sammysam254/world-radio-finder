@@ -155,6 +155,7 @@ const Index = () => {
   // Big player / fullscreen
   const [bigPlayer, setBigPlayer] = useState(false);
   const playerWrapRef = useRef<HTMLDivElement | null>(null);
+  const skipStationRef = useRef<((dir: 1 | -1) => void) | null>(null);
 
   // Network quality (auto)
   const [netQuality, setNetQuality] = useState<NetQuality>(detectNetQuality());
@@ -384,7 +385,9 @@ const Index = () => {
     if (p.idx + 1 >= p.urls.length) {
       setPlaying(false);
       setBuffering(false);
-      setPlayError(`Unable to play this stream${reason ? ` (${reason})` : ""}. All ${p.urls.length} mirror(s) failed.`);
+      setPlayError(`All mirrors failed${reason ? ` (${reason})` : ""}. Skipping to next…`);
+      // Auto-advance to the next station/channel in the list
+      window.setTimeout(() => skipStationRef.current?.(1), 600);
       return;
     }
     p.idx += 1;
@@ -420,7 +423,7 @@ const Index = () => {
         enableWorker: true,
         manifestLoadingMaxRetry: 1,
         fragLoadingMaxRetry: 2,
-        capLevelToPlayerSize: true,
+        capLevelToPlayerSize: false,
         startLevel: capLevel === -1 ? -1 : capLevel,
         maxMaxBufferLength: netQuality === "low" ? 10 : 30,
         abrEwmaDefaultEstimate: netQuality === "low" ? 300_000 : netQuality === "mid" ? 1_000_000 : 2_500_000,
@@ -485,6 +488,7 @@ const Index = () => {
       return;
     }
     playbackRef.current = { type: "tv", urls, idx: 0, attempt: 1 };
+    setBigPlayer(true);
     startTvUrl(urls[0]);
   };
 
@@ -509,6 +513,7 @@ const Index = () => {
       playTv(next);
     }
   };
+  skipStationRef.current = skipStation;
 
   const toggleFullscreen = () => {
     const el = playerWrapRef.current;
@@ -959,7 +964,7 @@ const Index = () => {
         controls={bigPlayer && !!currentTv}
         className={
           currentTv && bigPlayer
-            ? "fixed z-40 left-0 right-0 top-0 bottom-[72px] w-full h-auto max-h-[calc(100vh-72px)] object-contain bg-black"
+            ? "fixed z-40 left-0 right-0 top-0 bottom-[72px] w-full h-[calc(100vh-72px)] object-contain bg-black"
             : "hidden"
         }
         onPlaying={onPlayingSuccess}
