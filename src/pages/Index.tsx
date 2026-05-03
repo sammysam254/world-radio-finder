@@ -488,6 +488,7 @@ const Index = () => {
       return;
     }
     playbackRef.current = { type: "tv", urls, idx: 0, attempt: 1 };
+    setBigPlayer(true);
     startTvUrl(urls[0]);
   };
 
