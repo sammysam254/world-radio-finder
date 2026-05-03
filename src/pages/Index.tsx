@@ -44,17 +44,33 @@ const Index = () => {
   const [buffering, setBuffering] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const apiBase = useRef(API_BASES[Math.floor(Math.random() * API_BASES.length)]);
+  const apiBase = useRef(API_BASES[0]);
+
+  const fetchWithFallback = async (path: string) => {
+    let lastErr: unknown;
+    for (const base of API_BASES) {
+      try {
+        const r = await fetch(`${base}${path}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        apiBase.current = base;
+        return await r.json();
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr;
+  };
 
   useEffect(() => {
     document.title = "Wavebox · Free Internet Radio from Around the World";
     (async () => {
       try {
-        const r = await fetch(`${apiBase.current}/json/countries?hidebroken=true&order=stationcount&reverse=true`);
-        const data: Country[] = await r.json();
+        const data: Country[] = await fetchWithFallback(
+          `/json/countries?hidebroken=true&order=stationcount&reverse=true`
+        );
         setCountries(data.filter((c) => c.iso_3166_1 && c.stationcount > 0));
       } catch (e) {
-        console.error(e);
+        console.error("Failed to load countries", e);
       } finally {
         setLoadingCountries(false);
       }
@@ -66,11 +82,12 @@ const Index = () => {
     setStations([]);
     setLoadingStations(true);
     try {
-      const r = await fetch(
-        `${apiBase.current}/json/stations/search?countrycode=${c.iso_3166_1}&hidebroken=true&order=clickcount&reverse=true&limit=400`
+      const data: Station[] = await fetchWithFallback(
+        `/json/stations/search?countrycode=${c.iso_3166_1}&hidebroken=true&order=clickcount&reverse=true&limit=400`
       );
-      const data: Station[] = await r.json();
       setStations(data.filter((s) => s.url_resolved));
+    } catch (e) {
+      console.error("Failed to load stations", e);
     } finally {
       setLoadingStations(false);
     }
