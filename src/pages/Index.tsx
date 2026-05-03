@@ -956,19 +956,16 @@ const Index = () => {
       <video
         ref={videoRef}
         playsInline
-        controls={bigPlayer}
+        controls={bigPlayer && !!currentTv}
         className={
-          currentTv
-            ? bigPlayer
-              ? "w-full h-full object-contain bg-black"
-              : "hidden"
+          currentTv && bigPlayer
+            ? "fixed z-40 left-0 right-0 top-0 bottom-[72px] w-full h-auto max-h-[calc(100vh-72px)] object-contain bg-black"
             : "hidden"
         }
         onPlaying={onPlayingSuccess}
         onPause={() => setPlaying(false)}
         onWaiting={() => setBuffering(true)}
         onError={() => tryNextSource("video error")}
-        // Mount target swapped via portal-like trick below
       />
 
       {/* Player */}
@@ -976,14 +973,12 @@ const Index = () => {
         <div
           ref={playerWrapRef}
           className={`fixed z-50 glass border-t border-border/60 transition-all ${
-            bigPlayer ? "inset-0 flex flex-col" : "bottom-0 inset-x-0"
+            bigPlayer ? "inset-0 flex flex-col pointer-events-none" : "bottom-0 inset-x-0"
           }`}
         >
           {bigPlayer && (
-            <div className="flex-1 min-h-0 bg-black grid place-items-center relative">
-              {currentTv ? (
-                <VideoMount videoRef={videoRef} />
-              ) : (
+            <div className="flex-1 min-h-0 grid place-items-center relative pointer-events-auto">
+              {!currentTv && (
                 <div className="text-center px-6">
                   <div className="mx-auto h-56 w-56 sm:h-72 sm:w-72 rounded-3xl overflow-hidden grid place-items-center" style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-glow)" }}>
                     {currentRadio?.favicon ? (
