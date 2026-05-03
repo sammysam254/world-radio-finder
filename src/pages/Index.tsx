@@ -1083,26 +1083,5 @@ const Index = () => {
   );
 };
 
-// Mounts the persistent <video> element into the big-player area without remounting
-const VideoMount = ({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) => {
-  const slotRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const v = videoRef.current;
-    const slot = slotRef.current;
-    if (!v || !slot) return;
-    v.classList.remove("hidden");
-    v.classList.add("w-full", "h-full", "object-contain", "bg-black");
-    v.controls = true;
-    slot.appendChild(v);
-    return () => {
-      v.controls = false;
-      v.classList.add("hidden");
-      v.classList.remove("w-full", "h-full", "object-contain", "bg-black");
-      // Move back to body so ref stays valid
-      document.body.appendChild(v);
-    };
-  }, [videoRef]);
-  return <div ref={slotRef} className="w-full h-full" />;
-};
 
 export default Index;
