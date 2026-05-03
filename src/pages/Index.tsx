@@ -152,6 +152,20 @@ const Index = () => {
   const [loadingTv, setLoadingTv] = useState(false);
   const [currentTv, setCurrentTv] = useState<TvChannel | null>(null);
 
+  // Big player / fullscreen
+  const [bigPlayer, setBigPlayer] = useState(false);
+  const playerWrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Network quality (auto)
+  const [netQuality, setNetQuality] = useState<NetQuality>(detectNetQuality());
+  useEffect(() => {
+    const c: any = (navigator as any).connection;
+    if (!c) return;
+    const handler = () => setNetQuality(detectNetQuality());
+    c.addEventListener?.("change", handler);
+    return () => c.removeEventListener?.("change", handler);
+  }, []);
+
   const fetchWithFallback = async (path: string) => {
     let lastErr: unknown;
     for (const base of API_BASES) {
