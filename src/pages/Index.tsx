@@ -547,7 +547,7 @@ const Index = () => {
     <div className="min-h-screen pb-40">
       <audio
         ref={audioRef}
-        onPlaying={() => { setPlaying(true); setBuffering(false); setPlayError(null); clearPlaybackTimer(); }}
+        onPlaying={onPlayingSuccess}
         onPause={() => setPlaying(false)}
         onWaiting={() => setBuffering(true)}
         onError={() => tryNextSource("audio error")}
@@ -912,7 +912,7 @@ const Index = () => {
                 {currentTv && (
                   <div className="mb-6 rounded-2xl overflow-hidden border border-border/60 bg-black aspect-video max-w-3xl mx-auto">
                     <video ref={videoRef} controls playsInline className="w-full h-full"
-                      onPlaying={() => { setPlaying(true); setBuffering(false); setPlayError(null); clearPlaybackTimer(); }}
+                      onPlaying={onPlayingSuccess}
                       onPause={() => setPlaying(false)}
                       onWaiting={() => setBuffering(true)}
                       onError={() => tryNextSource("video error")}
