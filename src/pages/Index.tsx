@@ -1012,7 +1012,7 @@ const Index = () => {
             </div>
           )}
 
-          <div className="container py-4 flex items-center gap-2 sm:gap-4">
+          <div className={`container py-4 flex items-center gap-2 sm:gap-4 ${bigPlayer ? "pointer-events-auto glass border-t border-border/60" : ""}`}>
             <div
               className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
               onClick={() => !bigPlayer && setBigPlayer(true)}
