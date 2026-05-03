@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Play, Pause, Search, Radio, Volume2, VolumeX, Globe2, Loader2, Tv, Newspaper, Trophy, Music2, Sparkles, Layers, MapPin } from "lucide-react";
+import { Play, Pause, Search, Radio, Volume2, VolumeX, Globe2, Loader2, Tv, Newspaper, Trophy, Music2, Sparkles, Layers, MapPin, SkipBack, SkipForward, Maximize2, Minimize2, ChevronUp, ChevronDown, Wifi, WifiOff } from "lucide-react";
 
 type Country = { name: string; iso_3166_1: string; stationcount: number };
 type Station = {
@@ -70,6 +70,40 @@ const flag = (iso: string) =>
     .toUpperCase()
     .replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
 
+// ===== URL cache (last successfully playing URL per station/channel) =====
+const URL_CACHE_KEY = "wavebox.urlCache.v1";
+const loadUrlCache = (): Record<string, string> => {
+  try { return JSON.parse(localStorage.getItem(URL_CACHE_KEY) || "{}"); } catch { return {}; }
+};
+const saveCachedUrl = (id: string, url: string) => {
+  try {
+    const c = loadUrlCache();
+    c[id] = url;
+    localStorage.setItem(URL_CACHE_KEY, JSON.stringify(c));
+  } catch {}
+};
+const orderUrlsWithCache = (id: string, urls: string[]) => {
+  const cached = loadUrlCache()[id];
+  if (!cached || !urls.includes(cached)) return urls;
+  return [cached, ...urls.filter((u) => u !== cached)];
+};
+
+// ===== Network quality detection =====
+type NetQuality = "low" | "mid" | "high";
+const detectNetQuality = (): NetQuality => {
+  const c: any = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+  if (!c) return "high";
+  const t = c.effectiveType as string | undefined;
+  if (c.saveData) return "low";
+  if (t === "slow-2g" || t === "2g") return "low";
+  if (t === "3g") return "mid";
+  if (typeof c.downlink === "number") {
+    if (c.downlink < 1) return "low";
+    if (c.downlink < 3) return "mid";
+  }
+  return "high";
+};
+
 const Index = () => {
   // shared player
   const [mode, setMode] = useState<"radio" | "tv">("radio");
@@ -117,6 +151,20 @@ const Index = () => {
   const [tvCountrySearch, setTvCountrySearch] = useState("");
   const [loadingTv, setLoadingTv] = useState(false);
   const [currentTv, setCurrentTv] = useState<TvChannel | null>(null);
+
+  // Big player / fullscreen
+  const [bigPlayer, setBigPlayer] = useState(false);
+  const playerWrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Network quality (auto)
+  const [netQuality, setNetQuality] = useState<NetQuality>(detectNetQuality());
+  useEffect(() => {
+    const c: any = (navigator as any).connection;
+    if (!c) return;
+    const handler = () => setNetQuality(detectNetQuality());
+    c.addEventListener?.("change", handler);
+    return () => c.removeEventListener?.("change", handler);
+  }, []);
 
   const fetchWithFallback = async (path: string) => {
     let lastErr: unknown;
@@ -364,12 +412,28 @@ const Index = () => {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
+    // Cap quality based on detected network speed for stable playback
+    const capLevel = netQuality === "low" ? 0 : netQuality === "mid" ? 2 : -1;
+    const maxBitrate = netQuality === "low" ? 500_000 : netQuality === "mid" ? 1_500_000 : 0;
     if (url.includes(".m3u8") && Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true, manifestLoadingMaxRetry: 1, fragLoadingMaxRetry: 2 });
+      const hls = new Hls({
+        enableWorker: true,
+        manifestLoadingMaxRetry: 1,
+        fragLoadingMaxRetry: 2,
+        capLevelToPlayerSize: true,
+        startLevel: capLevel === -1 ? -1 : capLevel,
+        maxMaxBufferLength: netQuality === "low" ? 10 : 30,
+        abrEwmaDefaultEstimate: netQuality === "low" ? 300_000 : netQuality === "mid" ? 1_000_000 : 2_500_000,
+      });
       hlsRef.current = hls;
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (capLevel >= 0 && hls.levels.length > capLevel) hls.currentLevel = capLevel;
+        if (maxBitrate > 0) {
+          const idx = hls.levels.findIndex((l) => l.bitrate > maxBitrate);
+          if (idx > 0) hls.autoLevelCapping = idx - 1;
+        }
         video.play().catch(() => tryNextSource("autoplay blocked"));
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
@@ -396,7 +460,8 @@ const Index = () => {
     setCurrentTv(null);
     setCurrentRadio(s);
     setPlayError(null);
-    const urls = Array.from(new Set([s.url_resolved, s.url].filter(Boolean)));
+    const baseUrls = Array.from(new Set([s.url_resolved, s.url].filter(Boolean)));
+    const urls = orderUrlsWithCache(s.stationuuid, baseUrls);
     playbackRef.current = { type: "radio", urls, idx: 0, attempt: 1 };
     startRadioUrl(urls[0]);
     fetch(`${apiBase.current}/json/url/${s.stationuuid}`).catch(() => {});
@@ -413,7 +478,8 @@ const Index = () => {
     setCurrentRadio(null);
     setCurrentTv(ch);
     setPlayError(null);
-    const urls = ch.urls.length ? ch.urls : [];
+    const baseUrls = ch.urls.length ? ch.urls : [];
+    const urls = orderUrlsWithCache(ch.id, baseUrls);
     if (!urls.length) {
       setPlayError("No stream URLs available.");
       return;
@@ -425,6 +491,47 @@ const Index = () => {
   const togglePlay = () => {
     if (currentRadio) playRadio(currentRadio);
     else if (currentTv) playTv(currentTv);
+  };
+
+  // Skip to next/prev station/channel within the current filtered list
+  const skipStation = (dir: 1 | -1) => {
+    if (currentRadio) {
+      const list = filteredStations;
+      const i = list.findIndex((s) => s.stationuuid === currentRadio.stationuuid);
+      if (i < 0 || list.length === 0) return;
+      const next = list[(i + dir + list.length) % list.length];
+      playRadio(next);
+    } else if (currentTv) {
+      const list = filteredTvChannels;
+      const i = list.findIndex((c) => c.id === currentTv.id);
+      if (i < 0 || list.length === 0) return;
+      const next = list[(i + dir + list.length) % list.length];
+      playTv(next);
+    }
+  };
+
+  const toggleFullscreen = () => {
+    const el = playerWrapRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    } else {
+      el.requestFullscreen?.();
+    }
+  };
+
+  const onPlayingSuccess = () => {
+    setPlaying(true);
+    setBuffering(false);
+    setPlayError(null);
+    clearPlaybackTimer();
+    // Cache the URL that successfully started playing
+    const p = playbackRef.current;
+    if (p) {
+      const url = p.urls[p.idx];
+      if (currentRadio) saveCachedUrl(currentRadio.stationuuid, url);
+      else if (currentTv) saveCachedUrl(currentTv.id, url);
+    }
   };
 
   useEffect(() => {
@@ -440,7 +547,7 @@ const Index = () => {
     <div className="min-h-screen pb-40">
       <audio
         ref={audioRef}
-        onPlaying={() => { setPlaying(true); setBuffering(false); setPlayError(null); clearPlaybackTimer(); }}
+        onPlaying={onPlayingSuccess}
         onPause={() => setPlaying(false)}
         onWaiting={() => setBuffering(true)}
         onError={() => tryNextSource("audio error")}
@@ -802,17 +909,8 @@ const Index = () => {
                   </div>
                 </div>
 
-                {currentTv && (
-                  <div className="mb-6 rounded-2xl overflow-hidden border border-border/60 bg-black aspect-video max-w-3xl mx-auto">
-                    <video ref={videoRef} controls playsInline className="w-full h-full"
-                      onPlaying={() => { setPlaying(true); setBuffering(false); setPlayError(null); clearPlaybackTimer(); }}
-                      onPause={() => setPlaying(false)}
-                      onWaiting={() => setBuffering(true)}
-                      onError={() => tryNextSource("video error")}
-                    />
-                  </div>
-                )}
-                {!currentTv && <video ref={videoRef} className="hidden" />}
+                {/* TV video lives inside the global player below */}
+
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {filteredTvChannels.map((c) => {
@@ -854,11 +952,71 @@ const Index = () => {
         </Tabs>
       </div>
 
+      {/* Persistent video element for TV (always mounted so ref is stable) */}
+      <video
+        ref={videoRef}
+        playsInline
+        controls={bigPlayer && !!currentTv}
+        className={
+          currentTv && bigPlayer
+            ? "fixed z-40 left-0 right-0 top-0 bottom-[72px] w-full h-auto max-h-[calc(100vh-72px)] object-contain bg-black"
+            : "hidden"
+        }
+        onPlaying={onPlayingSuccess}
+        onPause={() => setPlaying(false)}
+        onWaiting={() => setBuffering(true)}
+        onError={() => tryNextSource("video error")}
+      />
+
       {/* Player */}
       {(currentRadio || currentTv) && (
-        <div className="fixed bottom-0 inset-x-0 z-50 glass border-t border-border/60">
-          <div className="container py-4 flex items-center gap-4">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div
+          ref={playerWrapRef}
+          className={`fixed z-50 glass border-t border-border/60 transition-all ${
+            bigPlayer ? "inset-0 flex flex-col pointer-events-none" : "bottom-0 inset-x-0"
+          }`}
+        >
+          {bigPlayer && (
+            <div className="flex-1 min-h-0 grid place-items-center relative pointer-events-auto">
+              {!currentTv && (
+                <div className="text-center px-6">
+                  <div className="mx-auto h-56 w-56 sm:h-72 sm:w-72 rounded-3xl overflow-hidden grid place-items-center" style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-glow)" }}>
+                    {currentRadio?.favicon ? (
+                      <img src={currentRadio.favicon} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+                    ) : (
+                      <Radio className="h-24 w-24 text-primary" />
+                    )}
+                  </div>
+                  <h3 className="mt-6 text-2xl font-black">{currentRadio?.name?.trim()}</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {currentRadio?.countrycode ? flag(currentRadio.countrycode) + " " : ""}
+                    {currentRadio?.country} · {currentRadio?.codec}
+                    {currentRadio?.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}
+                  </p>
+                  {playing && (
+                    <div className="flex items-end justify-center h-8 mt-4 gap-0.5">
+                      {Array.from({ length: 18 }).map((_, i) => (
+                        <span key={i} className="equalizer-bar" style={{ animationDelay: `${i * 0.07}s` }} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={() => setBigPlayer(false)}
+                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center"
+                aria-label="Collapse player"
+              >
+                <ChevronDown className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+
+          <div className={`container py-4 flex items-center gap-2 sm:gap-4 ${bigPlayer ? "pointer-events-auto glass border-t border-border/60" : ""}`}>
+            <div
+              className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+              onClick={() => !bigPlayer && setBigPlayer(true)}
+            >
               <div className="relative h-12 w-12 rounded-xl bg-secondary overflow-hidden shrink-0 grid place-items-center">
                 {currentRadio?.favicon ? (
                   <img src={currentRadio.favicon} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
@@ -872,17 +1030,24 @@ const Index = () => {
               </div>
               <div className="min-w-0">
                 <div className="font-semibold truncate">{(currentRadio?.name || currentTv?.name || "").trim()}</div>
-                <div className="text-xs text-muted-foreground truncate">
+                <div className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                  {netQuality === "low" ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
+                  <span className="uppercase tracking-wider">{netQuality}</span>
+                  <span>·</span>
                   {playError ? (
-                    <span className="text-destructive">{playError}</span>
+                    <span className="text-destructive truncate">{playError}</span>
                   ) : currentRadio ? (
-                    `${currentRadio.countrycode ? flag(currentRadio.countrycode) + " " : ""}${currentRadio.country} · ${currentRadio.codec}${currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}`
+                    <span className="truncate">{currentRadio.countrycode ? flag(currentRadio.countrycode) + " " : ""}{currentRadio.country} · {currentRadio.codec}{currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}</span>
                   ) : currentTv ? (
-                    `${flag(currentTv.country)} ${currentTv.categories.slice(0, 2).join(" · ") || "TV"}${currentTv.urls.length > 1 ? ` · mirror ${(playbackRef.current?.idx ?? 0) + 1}/${currentTv.urls.length}` : ""}`
-                  ) : ""}
+                    <span className="truncate">{flag(currentTv.country)} {currentTv.categories.slice(0, 2).join(" · ") || "TV"}{currentTv.urls.length > 1 ? ` · mirror ${(playbackRef.current?.idx ?? 0) + 1}/${currentTv.urls.length}` : ""}</span>
+                  ) : null}
                 </div>
               </div>
             </div>
+
+            <Button variant="ghost" size="icon" onClick={() => skipStation(-1)} className="shrink-0" aria-label="Previous">
+              <SkipBack className="h-5 w-5" />
+            </Button>
 
             <Button
               size="icon"
@@ -893,7 +1058,19 @@ const Index = () => {
               {buffering ? <Loader2 className="h-5 w-5 animate-spin" /> : playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </Button>
 
-            <div className="hidden sm:flex items-center gap-2 w-40">
+            <Button variant="ghost" size="icon" onClick={() => skipStation(1)} className="shrink-0" aria-label="Next">
+              <SkipForward className="h-5 w-5" />
+            </Button>
+
+            <Button variant="ghost" size="icon" onClick={() => setBigPlayer((b) => !b)} className="shrink-0 hidden sm:inline-flex" aria-label="Expand">
+              {bigPlayer ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+            </Button>
+
+            <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="shrink-0 hidden sm:inline-flex" aria-label="Fullscreen">
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+
+            <div className="hidden md:flex items-center gap-2 w-40">
               <Button variant="ghost" size="icon" onClick={() => setMuted((m) => !m)}>
                 {muted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
               </Button>
@@ -905,5 +1082,6 @@ const Index = () => {
     </div>
   );
 };
+
 
 export default Index;
