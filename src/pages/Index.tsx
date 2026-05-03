@@ -952,11 +952,76 @@ const Index = () => {
         </Tabs>
       </div>
 
+      {/* Persistent video element for TV (always mounted so ref is stable) */}
+      <video
+        ref={videoRef}
+        playsInline
+        controls={bigPlayer}
+        className={
+          currentTv
+            ? bigPlayer
+              ? "w-full h-full object-contain bg-black"
+              : "hidden"
+            : "hidden"
+        }
+        onPlaying={onPlayingSuccess}
+        onPause={() => setPlaying(false)}
+        onWaiting={() => setBuffering(true)}
+        onError={() => tryNextSource("video error")}
+        // Mount target swapped via portal-like trick below
+      />
+
       {/* Player */}
       {(currentRadio || currentTv) && (
-        <div className="fixed bottom-0 inset-x-0 z-50 glass border-t border-border/60">
-          <div className="container py-4 flex items-center gap-4">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div
+          ref={playerWrapRef}
+          className={`fixed z-50 glass border-t border-border/60 transition-all ${
+            bigPlayer ? "inset-0 flex flex-col" : "bottom-0 inset-x-0"
+          }`}
+        >
+          {bigPlayer && (
+            <div className="flex-1 min-h-0 bg-black grid place-items-center relative">
+              {currentTv ? (
+                <VideoMount videoRef={videoRef} />
+              ) : (
+                <div className="text-center px-6">
+                  <div className="mx-auto h-56 w-56 sm:h-72 sm:w-72 rounded-3xl overflow-hidden grid place-items-center" style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-glow)" }}>
+                    {currentRadio?.favicon ? (
+                      <img src={currentRadio.favicon} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+                    ) : (
+                      <Radio className="h-24 w-24 text-primary" />
+                    )}
+                  </div>
+                  <h3 className="mt-6 text-2xl font-black">{currentRadio?.name?.trim()}</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {currentRadio?.countrycode ? flag(currentRadio.countrycode) + " " : ""}
+                    {currentRadio?.country} · {currentRadio?.codec}
+                    {currentRadio?.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}
+                  </p>
+                  {playing && (
+                    <div className="flex items-end justify-center h-8 mt-4 gap-0.5">
+                      {Array.from({ length: 18 }).map((_, i) => (
+                        <span key={i} className="equalizer-bar" style={{ animationDelay: `${i * 0.07}s` }} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={() => setBigPlayer(false)}
+                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center"
+                aria-label="Collapse player"
+              >
+                <ChevronDown className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+
+          <div className="container py-4 flex items-center gap-2 sm:gap-4">
+            <div
+              className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+              onClick={() => !bigPlayer && setBigPlayer(true)}
+            >
               <div className="relative h-12 w-12 rounded-xl bg-secondary overflow-hidden shrink-0 grid place-items-center">
                 {currentRadio?.favicon ? (
                   <img src={currentRadio.favicon} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
@@ -970,17 +1035,24 @@ const Index = () => {
               </div>
               <div className="min-w-0">
                 <div className="font-semibold truncate">{(currentRadio?.name || currentTv?.name || "").trim()}</div>
-                <div className="text-xs text-muted-foreground truncate">
+                <div className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                  {netQuality === "low" ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
+                  <span className="uppercase tracking-wider">{netQuality}</span>
+                  <span>·</span>
                   {playError ? (
-                    <span className="text-destructive">{playError}</span>
+                    <span className="text-destructive truncate">{playError}</span>
                   ) : currentRadio ? (
-                    `${currentRadio.countrycode ? flag(currentRadio.countrycode) + " " : ""}${currentRadio.country} · ${currentRadio.codec}${currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}`
+                    <span className="truncate">{currentRadio.countrycode ? flag(currentRadio.countrycode) + " " : ""}{currentRadio.country} · {currentRadio.codec}{currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}</span>
                   ) : currentTv ? (
-                    `${flag(currentTv.country)} ${currentTv.categories.slice(0, 2).join(" · ") || "TV"}${currentTv.urls.length > 1 ? ` · mirror ${(playbackRef.current?.idx ?? 0) + 1}/${currentTv.urls.length}` : ""}`
-                  ) : ""}
+                    <span className="truncate">{flag(currentTv.country)} {currentTv.categories.slice(0, 2).join(" · ") || "TV"}{currentTv.urls.length > 1 ? ` · mirror ${(playbackRef.current?.idx ?? 0) + 1}/${currentTv.urls.length}` : ""}</span>
+                  ) : null}
                 </div>
               </div>
             </div>
+
+            <Button variant="ghost" size="icon" onClick={() => skipStation(-1)} className="shrink-0" aria-label="Previous">
+              <SkipBack className="h-5 w-5" />
+            </Button>
 
             <Button
               size="icon"
@@ -991,7 +1063,19 @@ const Index = () => {
               {buffering ? <Loader2 className="h-5 w-5 animate-spin" /> : playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </Button>
 
-            <div className="hidden sm:flex items-center gap-2 w-40">
+            <Button variant="ghost" size="icon" onClick={() => skipStation(1)} className="shrink-0" aria-label="Next">
+              <SkipForward className="h-5 w-5" />
+            </Button>
+
+            <Button variant="ghost" size="icon" onClick={() => setBigPlayer((b) => !b)} className="shrink-0 hidden sm:inline-flex" aria-label="Expand">
+              {bigPlayer ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+            </Button>
+
+            <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="shrink-0 hidden sm:inline-flex" aria-label="Fullscreen">
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+
+            <div className="hidden md:flex items-center gap-2 w-40">
               <Button variant="ghost" size="icon" onClick={() => setMuted((m) => !m)}>
                 {muted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
               </Button>
@@ -1002,6 +1086,28 @@ const Index = () => {
       )}
     </div>
   );
+};
+
+// Mounts the persistent <video> element into the big-player area without remounting
+const VideoMount = ({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement> }) => {
+  const slotRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const v = videoRef.current;
+    const slot = slotRef.current;
+    if (!v || !slot) return;
+    v.classList.remove("hidden");
+    v.classList.add("w-full", "h-full", "object-contain", "bg-black");
+    v.controls = true;
+    slot.appendChild(v);
+    return () => {
+      v.controls = false;
+      v.classList.add("hidden");
+      v.classList.remove("w-full", "h-full", "object-contain", "bg-black");
+      // Move back to body so ref stays valid
+      document.body.appendChild(v);
+    };
+  }, [videoRef]);
+  return <div ref={slotRef} className="w-full h-full" />;
 };
 
 export default Index;
