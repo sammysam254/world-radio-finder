@@ -423,7 +423,7 @@ const Index = () => {
         enableWorker: true,
         manifestLoadingMaxRetry: 1,
         fragLoadingMaxRetry: 2,
-        capLevelToPlayerSize: true,
+        capLevelToPlayerSize: false,
         startLevel: capLevel === -1 ? -1 : capLevel,
         maxMaxBufferLength: netQuality === "low" ? 10 : 30,
         abrEwmaDefaultEstimate: netQuality === "low" ? 300_000 : netQuality === "mid" ? 1_000_000 : 2_500_000,
