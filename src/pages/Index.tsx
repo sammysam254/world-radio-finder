@@ -909,17 +909,8 @@ const Index = () => {
                   </div>
                 </div>
 
-                {currentTv && (
-                  <div className="mb-6 rounded-2xl overflow-hidden border border-border/60 bg-black aspect-video max-w-3xl mx-auto">
-                    <video ref={videoRef} controls playsInline className="w-full h-full"
-                      onPlaying={onPlayingSuccess}
-                      onPause={() => setPlaying(false)}
-                      onWaiting={() => setBuffering(true)}
-                      onError={() => tryNextSource("video error")}
-                    />
-                  </div>
-                )}
-                {!currentTv && <video ref={videoRef} className="hidden" />}
+                {/* TV video lives inside the global player below */}
+
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {filteredTvChannels.map((c) => {
