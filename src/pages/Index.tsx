@@ -155,6 +155,7 @@ const Index = () => {
   // Big player / fullscreen
   const [bigPlayer, setBigPlayer] = useState(false);
   const playerWrapRef = useRef<HTMLDivElement | null>(null);
+  const skipStationRef = useRef<((dir: 1 | -1) => void) | null>(null);
 
   // Network quality (auto)
   const [netQuality, setNetQuality] = useState<NetQuality>(detectNetQuality());
