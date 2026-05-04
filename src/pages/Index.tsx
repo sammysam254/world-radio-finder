@@ -1012,8 +1012,8 @@ const Index = () => {
       {(currentRadio || currentTv) && (
         <div
           ref={playerWrapRef}
-          className={`fixed z-50 glass border-t border-border/60 transition-all ${
-            bigPlayer ? "inset-0 flex flex-col pointer-events-none" : "bottom-0 inset-x-0"
+          className={`fixed z-50 transition-all ${
+            bigPlayer ? "inset-0 flex flex-col pointer-events-none" : "bottom-0 inset-x-0 glass border-t border-border/60"
           }`}
         >
           {bigPlayer && (
