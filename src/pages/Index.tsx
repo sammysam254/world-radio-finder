@@ -122,6 +122,8 @@ const Index = () => {
     urls: string[];
     idx: number;
     timer?: number;
+    stationTimer?: number;
+    startedAt: number;
     attempt: number;
   } | null>(null);
 
@@ -353,8 +355,27 @@ const Index = () => {
     }
   };
 
+  const clearStationTimer = () => {
+    if (playbackRef.current?.stationTimer) {
+      clearTimeout(playbackRef.current.stationTimer);
+      playbackRef.current.stationTimer = undefined;
+    }
+  };
+
+  const skipAfterThirtySeconds = (reason?: string) => {
+    const p = playbackRef.current;
+    if (!p) return;
+    clearPlaybackTimer();
+    clearStationTimer();
+    setPlaying(false);
+    setBuffering(false);
+    setPlayError(`No playback after 30s${reason ? ` (${reason})` : ""}. Skipping…`);
+    window.setTimeout(() => skipStationRef.current?.(1), 250);
+  };
+
   const stopAll = () => {
     clearPlaybackTimer();
+    clearStationTimer();
     audioRef.current?.pause();
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -371,11 +392,22 @@ const Index = () => {
     clearPlaybackTimer();
     const el = kind === "radio" ? audioRef.current : videoRef.current;
     if (!el || !playbackRef.current) return;
-    // Stream-quality check: if not playing within 9s, try next URL
+    // Retry the next mirror before the 30s station/channel timeout expires.
     playbackRef.current.timer = window.setTimeout(() => {
       const isReady = el && !el.paused && el.readyState >= 2;
       if (!isReady) tryNextSource("Stream not ready");
-    }, 9000);
+    }, 10000);
+  };
+
+  const armStationTimeout = (kind: "radio" | "tv") => {
+    clearStationTimer();
+    const startedAt = playbackRef.current?.startedAt ?? Date.now();
+    const remaining = Math.max(0, 30000 - (Date.now() - startedAt));
+    playbackRef.current!.stationTimer = window.setTimeout(() => {
+      const el = kind === "radio" ? audioRef.current : videoRef.current;
+      const isReady = el && !el.paused && el.readyState >= 2;
+      if (!isReady) skipAfterThirtySeconds("timeout");
+    }, remaining);
   };
 
   const tryNextSource = (reason?: string) => {
@@ -383,11 +415,14 @@ const Index = () => {
     if (!p) return;
     clearPlaybackTimer();
     if (p.idx + 1 >= p.urls.length) {
-      setPlaying(false);
-      setBuffering(false);
-      setPlayError(`All mirrors failed${reason ? ` (${reason})` : ""}. Skipping to next…`);
-      // Auto-advance to the next station/channel in the list
-      window.setTimeout(() => skipStationRef.current?.(1), 600);
+      const remaining = 30000 - (Date.now() - p.startedAt);
+      if (remaining <= 0) {
+        skipAfterThirtySeconds(reason || "all mirrors failed");
+      } else {
+        setPlayError(`All mirrors failed${reason ? ` (${reason})` : ""}. Waiting 30s before skipping…`);
+        clearStationTimer();
+        p.stationTimer = window.setTimeout(() => skipAfterThirtySeconds(reason || "all mirrors failed"), remaining);
+      }
       return;
     }
     p.idx += 1;
@@ -415,28 +450,25 @@ const Index = () => {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
-    // Cap quality based on detected network speed for stable playback
-    const capLevel = netQuality === "low" ? 0 : netQuality === "mid" ? 2 : -1;
-    const maxBitrate = netQuality === "low" ? 500_000 : netQuality === "mid" ? 1_500_000 : 0;
+    // Start conservatively on weak connections, but keep ABR free to climb so TV is not blurred.
+    const startLevel = netQuality === "low" ? 0 : netQuality === "mid" ? 1 : -1;
     if (url.includes(".m3u8") && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         manifestLoadingMaxRetry: 1,
         fragLoadingMaxRetry: 2,
         capLevelToPlayerSize: false,
-        startLevel: capLevel === -1 ? -1 : capLevel,
-        maxMaxBufferLength: netQuality === "low" ? 10 : 30,
-        abrEwmaDefaultEstimate: netQuality === "low" ? 300_000 : netQuality === "mid" ? 1_000_000 : 2_500_000,
+        startLevel,
+        maxMaxBufferLength: netQuality === "low" ? 12 : 30,
+        abrEwmaDefaultEstimate: netQuality === "low" ? 650_000 : netQuality === "mid" ? 1_600_000 : 4_000_000,
       });
       hlsRef.current = hls;
+      hls.autoLevelCapping = -1;
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (capLevel >= 0 && hls.levels.length > capLevel) hls.currentLevel = capLevel;
-        if (maxBitrate > 0) {
-          const idx = hls.levels.findIndex((l) => l.bitrate > maxBitrate);
-          if (idx > 0) hls.autoLevelCapping = idx - 1;
-        }
+        hls.currentLevel = -1;
+        hls.nextLevel = -1;
         video.play().catch(() => tryNextSource("autoplay blocked"));
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
@@ -465,7 +497,8 @@ const Index = () => {
     setPlayError(null);
     const baseUrls = Array.from(new Set([s.url_resolved, s.url].filter(Boolean)));
     const urls = orderUrlsWithCache(s.stationuuid, baseUrls);
-    playbackRef.current = { type: "radio", urls, idx: 0, attempt: 1 };
+    playbackRef.current = { type: "radio", urls, idx: 0, attempt: 1, startedAt: Date.now() };
+    armStationTimeout("radio");
     startRadioUrl(urls[0]);
     fetch(`${apiBase.current}/json/url/${s.stationuuid}`).catch(() => {});
   };
@@ -487,7 +520,8 @@ const Index = () => {
       setPlayError("No stream URLs available.");
       return;
     }
-    playbackRef.current = { type: "tv", urls, idx: 0, attempt: 1 };
+    playbackRef.current = { type: "tv", urls, idx: 0, attempt: 1, startedAt: Date.now() };
+    armStationTimeout("tv");
     setBigPlayer(true);
     startTvUrl(urls[0]);
   };
@@ -530,6 +564,7 @@ const Index = () => {
     setBuffering(false);
     setPlayError(null);
     clearPlaybackTimer();
+    clearStationTimer();
     // Cache the URL that successfully started playing
     const p = playbackRef.current;
     if (p) {
@@ -977,12 +1012,12 @@ const Index = () => {
       {(currentRadio || currentTv) && (
         <div
           ref={playerWrapRef}
-          className={`fixed z-50 glass border-t border-border/60 transition-all ${
-            bigPlayer ? "inset-0 flex flex-col pointer-events-none" : "bottom-0 inset-x-0"
+          className={`fixed z-50 transition-all ${
+            bigPlayer ? "inset-0 flex flex-col pointer-events-none" : "bottom-0 inset-x-0 glass border-t border-border/60"
           }`}
         >
           {bigPlayer && (
-            <div className="flex-1 min-h-0 grid place-items-center relative pointer-events-auto">
+            <div className="flex-1 min-h-0 grid place-items-center relative pointer-events-none">
               {!currentTv && (
                 <div className="text-center px-6">
                   <div className="mx-auto h-56 w-56 sm:h-72 sm:w-72 rounded-3xl overflow-hidden grid place-items-center" style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-glow)" }}>
@@ -1009,7 +1044,7 @@ const Index = () => {
               )}
               <button
                 onClick={() => setBigPlayer(false)}
-                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center"
+                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center pointer-events-auto"
                 aria-label="Collapse player"
               >
                 <ChevronDown className="h-5 w-5" />
