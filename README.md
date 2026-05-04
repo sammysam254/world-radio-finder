@@ -129,7 +129,3 @@ wavebox-android/
 - ↩️ Back button navigation support
 - 🔐 Release signing via GitHub Secrets
 =======
-# Welcome to your Lovable project
-
-TODO: Document your project here
->>>>>>> ac6d1272b7605283c73418b414059b348676210a
