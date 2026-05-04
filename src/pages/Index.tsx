@@ -587,6 +587,43 @@ const Index = () => {
     if (videoRef.current) videoRef.current.volume = v;
   }, [volume, muted]);
 
+  // ===== Ad break: 5-min interval, skip after 5s =====
+  const clearAdTimers = () => {
+    if (adTimerRef.current) { clearTimeout(adTimerRef.current); adTimerRef.current = null; }
+    if (adCountdownRef.current) { clearInterval(adCountdownRef.current); adCountdownRef.current = null; }
+  };
+  const scheduleNextAd = () => {
+    clearAdTimers();
+    adTimerRef.current = window.setTimeout(() => {
+      if (!currentRadio && !currentTv) return;
+      // Pause underlying media during ad
+      audioRef.current?.pause();
+      videoRef.current?.pause();
+      setAdActive(true);
+      setBigPlayer(true);
+      setAdSkipIn(5);
+      adCountdownRef.current = window.setInterval(() => {
+        setAdSkipIn((s) => (s > 0 ? s - 1 : 0));
+      }, 1000);
+    }, 5 * 60 * 1000);
+  };
+  const closeAd = () => {
+    clearAdTimers();
+    setAdActive(false);
+    setAdSkipIn(5);
+    // Resume playback
+    if (currentRadio) audioRef.current?.play().catch(() => {});
+    else if (currentTv) videoRef.current?.play().catch(() => {});
+    scheduleNextAd();
+  };
+
+  useEffect(() => {
+    if (currentRadio || currentTv) scheduleNextAd();
+    else { clearAdTimers(); setAdActive(false); }
+    return () => clearAdTimers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRadio?.stationuuid, currentTv?.id]);
+
   const inRadioBrowse = !country && !radioCategory;
   const inTvBrowse = !tvCountry && !tvCategory;
 
