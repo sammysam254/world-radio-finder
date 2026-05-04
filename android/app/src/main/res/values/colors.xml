@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background: hsl(240 15% 6%) ≈ #0D0E17 -->
+    <color name="background">#0D0E17</color>
+    <!-- Card: hsl(240 14% 9%) ≈ #131420 -->
+    <color name="card">#131420</color>
+    <!-- Primary orange: hsl(18 95% 58%) ≈ #F97316 -->
+    <color name="primary">#F97316</color>
+    <!-- Accent purple: hsl(280 80% 65%) ≈ #C084FC -->
+    <color name="accent">#C084FC</color>
+    <!-- Foreground: hsl(40 30% 96%) ≈ #F5F4F0 -->
+    <color name="foreground">#F5F4F0</color>
+    <!-- Border: hsl(240 8% 18%) ≈ #27293A -->
+    <color name="border">#27293A</color>
+    <!-- Muted foreground -->
+    <color name="muted_foreground">#9A9AB0</color>
+    <!-- Status bar transparent -->
+    <color name="status_bar">#00000000</color>
+</resources>
