@@ -122,6 +122,8 @@ const Index = () => {
     urls: string[];
     idx: number;
     timer?: number;
+    stationTimer?: number;
+    startedAt: number;
     attempt: number;
   } | null>(null);
 
@@ -353,8 +355,27 @@ const Index = () => {
     }
   };
 
+  const clearStationTimer = () => {
+    if (playbackRef.current?.stationTimer) {
+      clearTimeout(playbackRef.current.stationTimer);
+      playbackRef.current.stationTimer = undefined;
+    }
+  };
+
+  const skipAfterThirtySeconds = (reason?: string) => {
+    const p = playbackRef.current;
+    if (!p) return;
+    clearPlaybackTimer();
+    clearStationTimer();
+    setPlaying(false);
+    setBuffering(false);
+    setPlayError(`No playback after 30s${reason ? ` (${reason})` : ""}. Skipping…`);
+    window.setTimeout(() => skipStationRef.current?.(1), 250);
+  };
+
   const stopAll = () => {
     clearPlaybackTimer();
+    clearStationTimer();
     audioRef.current?.pause();
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -371,11 +392,22 @@ const Index = () => {
     clearPlaybackTimer();
     const el = kind === "radio" ? audioRef.current : videoRef.current;
     if (!el || !playbackRef.current) return;
-    // Stream-quality check: if not playing within 9s, try next URL
+    // Retry the next mirror before the 30s station/channel timeout expires.
     playbackRef.current.timer = window.setTimeout(() => {
       const isReady = el && !el.paused && el.readyState >= 2;
       if (!isReady) tryNextSource("Stream not ready");
-    }, 9000);
+    }, 10000);
+  };
+
+  const armStationTimeout = (kind: "radio" | "tv") => {
+    clearStationTimer();
+    const startedAt = playbackRef.current?.startedAt ?? Date.now();
+    const remaining = Math.max(0, 30000 - (Date.now() - startedAt));
+    playbackRef.current!.stationTimer = window.setTimeout(() => {
+      const el = kind === "radio" ? audioRef.current : videoRef.current;
+      const isReady = el && !el.paused && el.readyState >= 2;
+      if (!isReady) skipAfterThirtySeconds("timeout");
+    }, remaining);
   };
 
   const tryNextSource = (reason?: string) => {
@@ -383,11 +415,14 @@ const Index = () => {
     if (!p) return;
     clearPlaybackTimer();
     if (p.idx + 1 >= p.urls.length) {
-      setPlaying(false);
-      setBuffering(false);
-      setPlayError(`All mirrors failed${reason ? ` (${reason})` : ""}. Skipping to next…`);
-      // Auto-advance to the next station/channel in the list
-      window.setTimeout(() => skipStationRef.current?.(1), 600);
+      const remaining = 30000 - (Date.now() - p.startedAt);
+      if (remaining <= 0) {
+        skipAfterThirtySeconds(reason || "all mirrors failed");
+      } else {
+        setPlayError(`All mirrors failed${reason ? ` (${reason})` : ""}. Waiting 30s before skipping…`);
+        clearStationTimer();
+        p.stationTimer = window.setTimeout(() => skipAfterThirtySeconds(reason || "all mirrors failed"), remaining);
+      }
       return;
     }
     p.idx += 1;
@@ -465,7 +500,8 @@ const Index = () => {
     setPlayError(null);
     const baseUrls = Array.from(new Set([s.url_resolved, s.url].filter(Boolean)));
     const urls = orderUrlsWithCache(s.stationuuid, baseUrls);
-    playbackRef.current = { type: "radio", urls, idx: 0, attempt: 1 };
+    playbackRef.current = { type: "radio", urls, idx: 0, attempt: 1, startedAt: Date.now() };
+    armStationTimeout("radio");
     startRadioUrl(urls[0]);
     fetch(`${apiBase.current}/json/url/${s.stationuuid}`).catch(() => {});
   };
@@ -487,7 +523,8 @@ const Index = () => {
       setPlayError("No stream URLs available.");
       return;
     }
-    playbackRef.current = { type: "tv", urls, idx: 0, attempt: 1 };
+    playbackRef.current = { type: "tv", urls, idx: 0, attempt: 1, startedAt: Date.now() };
+    armStationTimeout("tv");
     setBigPlayer(true);
     startTvUrl(urls[0]);
   };
@@ -530,6 +567,7 @@ const Index = () => {
     setBuffering(false);
     setPlayError(null);
     clearPlaybackTimer();
+    clearStationTimer();
     // Cache the URL that successfully started playing
     const p = playbackRef.current;
     if (p) {
