@@ -85,14 +85,52 @@ public class MainActivity extends AppCompatActivity {
                 if (action == null) return;
                 switch (action) {
                     case "next":
-                        webView.evaluateJavascript("(function(){var b=document.querySelectorAll('button');for(var i=0;i<b.length;i++){var t=b[i].innerText+b[i].getAttribute('aria-label');if(t&&(t.toLowerCase().includes('next')||t.includes('>')||t.includes('›'))){b[i].click();break;}}})();", null);
+                        webView.evaluateJavascript(
+                            "(function(){" +
+                            "var all=document.querySelectorAll('button,div,span,a');" +
+                            "for(var i=0;i<all.length;i++){" +
+                            "  var el=all[i];" +
+                            "  var label=(el.getAttribute('aria-label')||'')+(el.innerText||'')+(el.className||'');" +
+                            "  label=label.toLowerCase();" +
+                            "  if(label.includes('next')||label.includes('forward')||label.includes('skip')){" +
+                            "    el.click();break;" +
+                            "  }" +
+                            "}" +
+                            "})();", null);
                         break;
                     case "prev":
-                        webView.evaluateJavascript("(function(){var b=document.querySelectorAll('button');for(var i=0;i<b.length;i++){var t=b[i].innerText+b[i].getAttribute('aria-label');if(t&&(t.toLowerCase().includes('prev')||t.includes('<')||t.includes('‹'))){b[i].click();break;}}})();", null);
+                        webView.evaluateJavascript(
+                            "(function(){" +
+                            "var all=document.querySelectorAll('button,div,span,a');" +
+                            "for(var i=0;i<all.length;i++){" +
+                            "  var el=all[i];" +
+                            "  var label=(el.getAttribute('aria-label')||'')+(el.innerText||'')+(el.className||'');" +
+                            "  label=label.toLowerCase();" +
+                            "  if(label.includes('prev')||label.includes('back')||label.includes('previous')){" +
+                            "    el.click();break;" +
+                            "  }" +
+                            "}" +
+                            "})();", null);
                         break;
                     case "play":
                     case "pause":
-                        webView.evaluateJavascript("(function(){var a=document.querySelectorAll('audio,video');for(var i=0;i<a.length;i++){if(a[i].paused)a[i].play();else a[i].pause();}})();", null);
+                        webView.evaluateJavascript(
+                            "(function(){" +
+                            "var media=document.querySelectorAll('audio,video');" +
+                            "if(media.length>0){" +
+                            "  if(media[0].paused){media[0].play();}" +
+                            "  else{media[0].pause();}" +
+                            "  return;" +
+                            "}" +
+                            "var all=document.querySelectorAll('button,div,span');" +
+                            "for(var i=0;i<all.length;i++){" +
+                            "  var label=(all[i].getAttribute('aria-label')||'')+(all[i].innerText||'');" +
+                            "  label=label.toLowerCase();" +
+                            "  if(label.includes('play')||label.includes('pause')||label.includes('stop')){" +
+                            "    all[i].click();break;" +
+                            "  }" +
+                            "}" +
+                            "})();", null);
                         break;
                 }
             }
@@ -117,50 +155,54 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void animateDots(int step) {
-        if (loadingOverlay == null || loadingOverlay.getVisibility() != View.VISIBLE) return;
+        if (loadingOverlay==null||loadingOverlay.getVisibility()!=View.VISIBLE) return;
         TextView dots = findViewById(R.id.loading_dots);
-        if (dots == null) return;
-        String[] states = {"●  ○  ○","○  ●  ○","○  ○  ●"};
-        dots.setText(states[step % 3]);
-        handler.postDelayed(() -> animateDots(step + 1), 400);
+        if (dots==null) return;
+        String[] states={"●  ○  ○","○  ●  ○","○  ○  ●"};
+        dots.setText(states[step%3]);
+        handler.postDelayed(()->animateDots(step+1),400);
     }
 
     private void hideLoadingOverlay() {
-        if (loadingOverlay == null) return;
+        if (loadingOverlay==null) return;
         playOpeningChime();
-        AlphaAnimation fade = new AlphaAnimation(1f, 0f);
+        AlphaAnimation fade=new AlphaAnimation(1f,0f);
         fade.setDuration(600);
-        fade.setAnimationListener(new Animation.AnimationListener() {
-            public void onAnimationStart(Animation a) {}
-            public void onAnimationRepeat(Animation a) {}
-            public void onAnimationEnd(Animation a) {
+        fade.setAnimationListener(new Animation.AnimationListener(){
+            public void onAnimationStart(Animation a){}
+            public void onAnimationRepeat(Animation a){}
+            public void onAnimationEnd(Animation a){
                 loadingOverlay.setVisibility(View.GONE);
+                // Start service only after page loaded so audio context is alive
+                Intent si=new Intent(MainActivity.this,RadioService.class);
+                if (Build.VERSION.SDK_INT>=Build.VERSION_CODES.O)
+                    startForegroundService(si);
+                else
+                    startService(si);
             }
         });
         loadingOverlay.startAnimation(fade);
-        // Start service AFTER page loads so audio keeps playing in background
-        Intent si = new Intent(this, RadioService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(si);
-        else startService(si);
     }
 
     private void playOpeningChime() {
-        new Thread(() -> {
-            int[] tones = {ToneGenerator.TONE_CDMA_HIGH_PBX_L, ToneGenerator.TONE_CDMA_MED_PBX_L, ToneGenerator.TONE_CDMA_HIGH_PBX_SS};
-            for (int tone : tones) {
-                try {
-                    ToneGenerator tg = new ToneGenerator(AudioManager.STREAM_MUSIC, 50);
-                    tg.startTone(tone, 200);
+        new Thread(()->{
+            int[] tones={ToneGenerator.TONE_CDMA_HIGH_PBX_L,
+                         ToneGenerator.TONE_CDMA_MED_PBX_L,
+                         ToneGenerator.TONE_CDMA_HIGH_PBX_SS};
+            for (int tone:tones){
+                try{
+                    ToneGenerator tg=new ToneGenerator(AudioManager.STREAM_MUSIC,50);
+                    tg.startTone(tone,200);
                     Thread.sleep(220);
                     tg.release();
-                } catch (Exception ignored) {}
+                }catch(Exception ignored){}
             }
         }).start();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private void setupWebView() {
-        WebSettings s = webView.getSettings();
+        WebSettings s=webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
@@ -173,47 +215,47 @@ public class MainActivity extends AppCompatActivity {
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
-        s.setUserAgentString(s.getUserAgentString() + " WaveboxApp/1.0 Android");
-        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        s.setUserAgentString(s.getUserAgentString()+" WaveboxApp/1.0 Android");
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE,null);
         webView.setBackgroundColor(Color.parseColor("#0D0E17"));
-        webView.addJavascriptInterface(new WaveboxBridge(this), "WaveboxBridge");
+        webView.addJavascriptInterface(new WaveboxBridge(this),"WaveboxBridge");
 
-        webView.setWebViewClient(new WebViewClient() {
+        webView.setWebViewClient(new WebViewClient(){
             @Override
-            public void onPageStarted(WebView v, String url, android.graphics.Bitmap f) {
-                super.onPageStarted(v, url, f);
-                if (firstLoad && loadingOverlay != null) loadingOverlay.setVisibility(View.VISIBLE);
+            public void onPageStarted(WebView v,String url,android.graphics.Bitmap f){
+                super.onPageStarted(v,url,f);
+                if (firstLoad&&loadingOverlay!=null) loadingOverlay.setVisibility(View.VISIBLE);
                 errorLayout.setVisibility(View.GONE);
             }
             @Override
-            public void onPageFinished(WebView v, String url) {
-                super.onPageFinished(v, url);
+            public void onPageFinished(WebView v,String url){
+                super.onPageFinished(v,url);
                 swipeRefreshLayout.setRefreshing(false);
-                if (firstLoad) { firstLoad = false; hideLoadingOverlay(); }
+                if (firstLoad){firstLoad=false;hideLoadingOverlay();}
                 injectCSS(v);
             }
             @Override
-            public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
-                if (req.isForMainFrame()) {
-                    if (loadingOverlay != null) loadingOverlay.setVisibility(View.GONE);
+            public void onReceivedError(WebView v,WebResourceRequest req,WebResourceError err){
+                if (req.isForMainFrame()){
+                    if (loadingOverlay!=null) loadingOverlay.setVisibility(View.GONE);
                     errorLayout.setVisibility(View.VISIBLE);
                     errorText.setText("No internet connection.\nPull down to retry.");
                 }
             }
             @Override
-            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest req) {
-                String url = req.getUrl().toString();
+            public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest req){
+                String url=req.getUrl().toString();
                 if (url.contains("internetfm.netlify.app")) return false;
-                if (url.startsWith("http")) { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); return true; }
+                if (url.startsWith("http")){startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));return true;}
                 return false;
             }
         });
 
-        webView.setWebChromeClient(new WebChromeClient() {
+        webView.setWebChromeClient(new WebChromeClient(){
             @Override
-            public void onShowCustomView(View view, CustomViewCallback cb) {
-                if (customView != null) { cb.onCustomViewHidden(); return; }
-                customView = view; customViewCallback = cb;
+            public void onShowCustomView(View view,CustomViewCallback cb){
+                if (customView!=null){cb.onCustomViewHidden();return;}
+                customView=view;customViewCallback=cb;
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
                 getWindow().getDecorView().setSystemUiVisibility(
                     View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|
@@ -224,55 +266,55 @@ public class MainActivity extends AppCompatActivity {
                 swipeRefreshLayout.setVisibility(View.GONE);
             }
             @Override
-            public void onHideCustomView() {
-                if (customView == null) return;
+            public void onHideCustomView(){
+                if (customView==null) return;
                 fullscreenContainer.removeView(customView);
                 fullscreenContainer.setVisibility(View.GONE);
                 swipeRefreshLayout.setVisibility(View.VISIBLE);
-                customView = null; customViewCallback.onCustomViewHidden();
+                customView=null;customViewCallback.onCustomViewHidden();
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
                 getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
                 getWindow().setStatusBarColor(Color.parseColor("#0D0E17"));
             }
-            @Override public void onPermissionRequest(PermissionRequest r) { r.grant(r.getResources()); }
-            @Override public boolean onConsoleMessage(ConsoleMessage m) { return true; }
+            @Override public void onPermissionRequest(PermissionRequest r){r.grant(r.getResources());}
+            @Override public boolean onConsoleMessage(ConsoleMessage m){return true;}
         });
     }
 
-    private void injectCSS(WebView v) {
+    private void injectCSS(WebView v){
         v.loadUrl("javascript:(function(){var s=document.createElement('style');s.textContent='*{-webkit-tap-highlight-color:transparent;}html,body{padding-top:0!important;margin-top:0!important;}body>div:first-child{padding-bottom:90px!important;}::-webkit-scrollbar{display:none;}';document.head.appendChild(s);})();");
     }
 
-    private void setupSwipeRefresh() {
+    private void setupSwipeRefresh(){
         swipeRefreshLayout.setColorSchemeColors(Color.parseColor("#F97316"),Color.parseColor("#C084FC"));
         swipeRefreshLayout.setProgressBackgroundColorSchemeColor(Color.parseColor("#16171F"));
-        swipeRefreshLayout.setOnRefreshListener(() -> { errorLayout.setVisibility(View.GONE); webView.reload(); });
+        swipeRefreshLayout.setOnRefreshListener(()->{errorLayout.setVisibility(View.GONE);webView.reload();});
     }
 
     @Override
-    public boolean onKeyDown(int keyCode, KeyEvent e) {
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if (customView != null) { webView.getWebChromeClient().onHideCustomView(); return true; }
-            if (webView.canGoBack()) { webView.goBack(); return true; }
+    public boolean onKeyDown(int keyCode,KeyEvent e){
+        if (keyCode==KeyEvent.KEYCODE_BACK){
+            if (customView!=null){webView.getWebChromeClient().onHideCustomView();return true;}
+            if (webView.canGoBack()){webView.goBack();return true;}
         }
-        return super.onKeyDown(keyCode, e);
+        return super.onKeyDown(keyCode,e);
     }
 
-    @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); webView.saveState(o); }
-    @Override protected void onResume() { super.onResume(); webView.onResume(); webView.resumeTimers(); }
-    @Override protected void onPause() { super.onPause(); webView.onPause(); webView.pauseTimers(); }
+    // Keep WebView audio alive when minimized - do NOT pause it
+    @Override protected void onResume(){super.onResume();webView.onResume();webView.resumeTimers();}
+    @Override protected void onPause(){super.onPause();} // intentionally NOT pausing webview
+    @Override protected void onSaveInstanceState(Bundle o){super.onSaveInstanceState(o);webView.saveState(o);}
 
     @Override
-    protected void onDestroy() {
-        // Stop service when app is fully closed
-        stopService(new Intent(this, RadioService.class));
-        try { unregisterReceiver(controlReceiver); } catch (Exception ignored) {}
+    protected void onDestroy(){
+        stopService(new Intent(this,RadioService.class));
+        try{unregisterReceiver(controlReceiver);}catch(Exception ignored){}
         handler.removeCallbacksAndMessages(null);
-        if (webView != null) { webView.stopLoading(); webView.destroy(); }
+        if (webView!=null){webView.stopLoading();webView.destroy();}
         super.onDestroy();
     }
 
-    public static class WaveboxBridge {
+    public static class WaveboxBridge{
         private final Activity a;
         WaveboxBridge(Activity a){this.a=a;}
         @JavascriptInterface public String getAppVersion(){return "1.0.0";}
