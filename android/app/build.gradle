@@ -36,7 +36,6 @@ android {
         }
         debug {
             applicationIdSuffix ".debug"
-            versionNameSuffix "-debug"
         }
     }
 
@@ -48,6 +47,11 @@ android {
     buildFeatures {
         viewBinding true
     }
+}
+
+repositories {
+    google()
+    mavenCentral()
 }
 
 dependencies {
