@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 📻 Wavebox — Android App
 
 World Radio & TV Finder — Android Edition  
@@ -127,3 +128,8 @@ wavebox-android/
 - 🌙 Dark theme matching the web app exactly
 - ↩️ Back button navigation support
 - 🔐 Release signing via GitHub Secrets
+=======
+# Welcome to your Lovable project
+
+TODO: Document your project here
+>>>>>>> ac6d1272b7605283c73418b414059b348676210a

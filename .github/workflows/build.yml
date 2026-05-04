@@ -1,109 +1,27 @@
 name: Build Wavebox APK
-
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
-
 jobs:
   build:
-    name: Build APK
     runs-on: ubuntu-latest
-
     steps:
-      # ── Checkout ───────────────────────────────────────────────────────────
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ── JDK ────────────────────────────────────────────────────────────────
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
-
-      # ── Gradle cache ───────────────────────────────────────────────────────
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
-
-      # ── Permissions ────────────────────────────────────────────────────────
-      - name: Make gradlew executable
-        run: chmod +x android/gradlew
-
-      # ── (Optional) Decode keystore for signed release ──────────────────────
-      - name: Decode keystore
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      - name: Install Gradle
         run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
-
-      # ── Build debug APK (always) ───────────────────────────────────────────
+          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt/gradle
+          echo "/opt/gradle/gradle-8.4/bin" >> $GITHUB_PATH
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --stacktrace
-
-      # ── Build release APK ──────────────────────────────────────────────────
-      - name: Build release APK
-        working-directory: android
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
-
-      # ── Upload debug APK artifact ──────────────────────────────────────────
-      - name: Upload debug APK
+        run: gradle assembleDebug --stacktrace --no-daemon
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: wavebox-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 14
-
-      # ── Upload release APK artifact ────────────────────────────────────────
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: wavebox-release
-          path: android/app/build/outputs/apk/release/app-release*.apk
-          retention-days: 30
-
-      # ── Auto-release on push to main ───────────────────────────────────────
-      - name: Create GitHub Release
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ github.run_number }}
-          name: "Wavebox v${{ github.run_number }}"
-          body: |
-            ## Wavebox Android App
-            
-            🎵 World Radio & TV Finder — Android Edition
-            
-            ### Downloads
-            - **wavebox-release.apk** — Install this (signed release build)
-            - **wavebox-debug.apk** — Debug build for testing
-            
-            ### What's included
-            - Full radio & TV streaming via internetfm.netlify.app
-            - Audio playback in background
-            - Swipe-to-refresh
-            - Offline error screen
-            - Dark theme matching the web app
-          files: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            android/app/build/outputs/apk/release/app-release*.apk
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
