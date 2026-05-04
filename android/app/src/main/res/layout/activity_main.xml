@@ -10,16 +10,22 @@
         android:id="@+id/swipe_refresh"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
-
         <WebView
             android:id="@+id/webview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="#0D0E17" />
-
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
-    <!-- Loading progress bar at top -->
+    <!-- Fullscreen video container for TV -->
+    <FrameLayout
+        android:id="@+id/fullscreen_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone" />
+
+    <!-- Progress bar -->
     <ProgressBar
         android:id="@+id/progress_bar"
         style="?android:attr/progressBarStyleHorizontal"
@@ -31,15 +37,13 @@
         android:max="100"
         android:visibility="gone" />
 
-    <!-- Error / offline screen -->
+    <!-- Offline error screen -->
     <RelativeLayout
         android:id="@+id/error_layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#0D0E17"
-        android:gravity="center"
         android:visibility="gone">
-
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -47,14 +51,12 @@
             android:orientation="vertical"
             android:gravity="center"
             android:padding="32dp">
-
             <TextView
                 android:text="📻"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textSize="64sp"
                 android:layout_marginBottom="16dp" />
-
             <TextView
                 android:text="Wavebox"
                 android:layout_width="wrap_content"
@@ -62,9 +64,7 @@
                 android:textColor="#F97316"
                 android:textSize="28sp"
                 android:textStyle="bold"
-                android:fontFamily="sans-serif-medium"
                 android:layout_marginBottom="8dp" />
-
             <TextView
                 android:id="@+id/error_text"
                 android:layout_width="wrap_content"
@@ -72,11 +72,8 @@
                 android:textColor="#A0A0B0"
                 android:textSize="15sp"
                 android:gravity="center"
-                android:lineSpacingExtra="4dp"
                 android:text="No internet connection.\nPull down to retry." />
-
         </LinearLayout>
-
     </RelativeLayout>
 
 </RelativeLayout>
