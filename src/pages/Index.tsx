@@ -1097,9 +1097,27 @@ const Index = () => {
                   )}
                 </div>
               )}
+              {adActive && (
+                <div className="absolute inset-0 z-10 bg-black pointer-events-auto flex flex-col">
+                  <div className="flex-1 min-h-0 relative">
+                    <AdSlot />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 px-4 py-3 bg-black/80 border-t border-border/60">
+                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Commercial break</div>
+                    <button
+                      disabled={adSkipIn > 0}
+                      onClick={closeAd}
+                      className="px-4 py-2 rounded-full text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ background: "var(--gradient-primary)", color: "hsl(var(--primary-foreground))" }}
+                    >
+                      {adSkipIn > 0 ? `Skip in ${adSkipIn}s` : "Skip ad ▸"}
+                    </button>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => setBigPlayer(false)}
-                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center pointer-events-auto"
+                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center pointer-events-auto z-20"
                 aria-label="Collapse player"
               >
                 <ChevronDown className="h-5 w-5" />
