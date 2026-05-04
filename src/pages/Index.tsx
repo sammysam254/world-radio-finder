@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Play, Pause, Search, Radio, Volume2, VolumeX, Globe2, Loader2, Tv, Newspaper, Trophy, Music2, Sparkles, Layers, MapPin, SkipBack, SkipForward, Maximize2, Minimize2, ChevronUp, ChevronDown, Wifi, WifiOff } from "lucide-react";
+import AdSlot from "@/components/AdSlot";
 
 type Country = { name: string; iso_3166_1: string; stationcount: number };
 type Station = {
