@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0D0E17"
-    tools:context=".MainActivity">
+    android:background="#0D0E17">
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipe_refresh"
@@ -14,28 +12,70 @@
             android:id="@+id/webview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#0D0E17" />
+            android:background="#0D0E17"/>
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
-    <!-- Fullscreen video container for TV -->
+    <!-- Fullscreen video container -->
     <FrameLayout
         android:id="@+id/fullscreen_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#000000"
-        android:visibility="gone" />
+        android:visibility="gone"/>
 
-    <!-- Progress bar -->
-    <ProgressBar
-        android:id="@+id/progress_bar"
-        style="?android:attr/progressBarStyleHorizontal"
+    <!-- Beautiful loading overlay (replaces black screen + progress bar) -->
+    <LinearLayout
+        android:id="@+id/loading_overlay"
         android:layout_width="match_parent"
-        android:layout_height="3dp"
-        android:layout_alignParentTop="true"
-        android:progressTint="#F97316"
-        android:progressBackgroundTint="#1A1B26"
-        android:max="100"
-        android:visibility="gone" />
+        android:layout_height="match_parent"
+        android:background="#0D0E17"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="visible">
+
+        <!-- Pulsing radio icon -->
+        <TextView
+            android:id="@+id/loading_icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📻"
+            android:textSize="72sp"
+            android:gravity="center"/>
+
+        <!-- App name -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="WAVEBOX"
+            android:textColor="#F97316"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.2"
+            android:layout_marginTop="20dp"
+            android:gravity="center"/>
+
+        <!-- Tagline -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="World Radio &amp; TV"
+            android:textColor="#C084FC"
+            android:textSize="13sp"
+            android:layout_marginTop="6dp"
+            android:gravity="center"/>
+
+        <!-- Animated dots -->
+        <TextView
+            android:id="@+id/loading_dots"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="● ● ●"
+            android:textColor="#F97316"
+            android:textSize="12sp"
+            android:layout_marginTop="32dp"
+            android:gravity="center"/>
+
+    </LinearLayout>
 
     <!-- Offline error screen -->
     <RelativeLayout
@@ -56,7 +96,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textSize="64sp"
-                android:layout_marginBottom="16dp" />
+                android:layout_marginBottom="16dp"/>
             <TextView
                 android:text="Wavebox"
                 android:layout_width="wrap_content"
@@ -64,7 +104,7 @@
                 android:textColor="#F97316"
                 android:textSize="28sp"
                 android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
+                android:layout_marginBottom="8dp"/>
             <TextView
                 android:id="@+id/error_text"
                 android:layout_width="wrap_content"
@@ -72,7 +112,7 @@
                 android:textColor="#A0A0B0"
                 android:textSize="15sp"
                 android:gravity="center"
-                android:text="No internet connection.\nPull down to retry." />
+                android:text="No internet connection.\nPull down to retry."/>
         </LinearLayout>
     </RelativeLayout>
 
