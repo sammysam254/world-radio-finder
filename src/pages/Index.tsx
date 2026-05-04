@@ -160,6 +160,12 @@ const Index = () => {
   const playerWrapRef = useRef<HTMLDivElement | null>(null);
   const skipStationRef = useRef<((dir: 1 | -1) => void) | null>(null);
 
+  // Ad break (commercial every 5 min, skip button after 5s)
+  const [adActive, setAdActive] = useState(false);
+  const [adSkipIn, setAdSkipIn] = useState(5);
+  const adTimerRef = useRef<number | null>(null);
+  const adCountdownRef = useRef<number | null>(null);
+
   // Network quality (auto)
   const [netQuality, setNetQuality] = useState<NetQuality>(detectNetQuality());
   useEffect(() => {
