@@ -450,28 +450,26 @@ const Index = () => {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
-    // Cap quality based on detected network speed for stable playback
-    const capLevel = netQuality === "low" ? 0 : netQuality === "mid" ? 2 : -1;
-    const maxBitrate = netQuality === "low" ? 500_000 : netQuality === "mid" ? 1_500_000 : 0;
+    // Start conservatively on weak connections, but keep ABR free to climb so TV is not blurred.
+    const startLevel = netQuality === "low" ? 0 : netQuality === "mid" ? 1 : -1;
     if (url.includes(".m3u8") && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         manifestLoadingMaxRetry: 1,
         fragLoadingMaxRetry: 2,
         capLevelToPlayerSize: false,
-        startLevel: capLevel === -1 ? -1 : capLevel,
-        maxMaxBufferLength: netQuality === "low" ? 10 : 30,
-        abrEwmaDefaultEstimate: netQuality === "low" ? 300_000 : netQuality === "mid" ? 1_000_000 : 2_500_000,
+        startLevel,
+        autoLevelCapping: -1,
+        maxMaxBufferLength: netQuality === "low" ? 12 : 30,
+        abrEwmaDefaultEstimate: netQuality === "low" ? 650_000 : netQuality === "mid" ? 1_600_000 : 4_000_000,
       });
       hlsRef.current = hls;
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (capLevel >= 0 && hls.levels.length > capLevel) hls.currentLevel = capLevel;
-        if (maxBitrate > 0) {
-          const idx = hls.levels.findIndex((l) => l.bitrate > maxBitrate);
-          if (idx > 0) hls.autoLevelCapping = idx - 1;
-        }
+        hls.currentLevel = -1;
+        hls.nextLevel = -1;
+        hls.autoLevelEnabled;
         video.play().catch(() => tryNextSource("autoplay blocked"));
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
