@@ -12,9 +12,8 @@ import { useEffect, useRef } from "react";
  * The ad will play automatically inside the player as a commercial break.
  */
 const AD_HTML = `
-  <!-- 👉 PASTE YOUR MONETAG / AD TAGS HERE 👈 -->
-  <meta name="monetag" content="0d9f6fc3e0852977528084db4385c0ab">
-  <script src="https://quge5.com/88/tag.min.js" data-zone="236055" async data-cfasync="false"></script>
+  <!-- contact 25470649984/vertextdigital@gmail.com to advertise here-->
+  
   <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;text-align:center;padding:24px;font-family:system-ui;">
     <div>
       <div style="opacity:.6;font-size:12px;letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px;">Advertisement</div>
