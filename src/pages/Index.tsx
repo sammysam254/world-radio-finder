@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Play, Pause, Search, Radio, Volume2, VolumeX, Globe2, Loader2, Tv, Newspaper, Trophy, Music2, Sparkles, Layers, MapPin, SkipBack, SkipForward, Maximize2, Minimize2, ChevronUp, ChevronDown, Wifi, WifiOff } from "lucide-react";
+import AdSlot from "@/components/AdSlot";
 
 type Country = { name: string; iso_3166_1: string; stationcount: number };
 type Station = {
@@ -158,6 +159,12 @@ const Index = () => {
   const [bigPlayer, setBigPlayer] = useState(false);
   const playerWrapRef = useRef<HTMLDivElement | null>(null);
   const skipStationRef = useRef<((dir: 1 | -1) => void) | null>(null);
+
+  // Ad break (commercial every 5 min, skip button after 5s)
+  const [adActive, setAdActive] = useState(false);
+  const [adSkipIn, setAdSkipIn] = useState(5);
+  const adTimerRef = useRef<number | null>(null);
+  const adCountdownRef = useRef<number | null>(null);
 
   // Network quality (auto)
   const [netQuality, setNetQuality] = useState<NetQuality>(detectNetQuality());
@@ -498,6 +505,7 @@ const Index = () => {
     const baseUrls = Array.from(new Set([s.url_resolved, s.url].filter(Boolean)));
     const urls = orderUrlsWithCache(s.stationuuid, baseUrls);
     playbackRef.current = { type: "radio", urls, idx: 0, attempt: 1, startedAt: Date.now() };
+    setBigPlayer(true);
     armStationTimeout("radio");
     startRadioUrl(urls[0]);
     fetch(`${apiBase.current}/json/url/${s.stationuuid}`).catch(() => {});
@@ -580,11 +588,58 @@ const Index = () => {
     if (videoRef.current) videoRef.current.volume = v;
   }, [volume, muted]);
 
+  // ===== Ad break: 5-min interval, skip after 5s =====
+  const clearAdTimers = () => {
+    if (adTimerRef.current) { clearTimeout(adTimerRef.current); adTimerRef.current = null; }
+    if (adCountdownRef.current) { clearInterval(adCountdownRef.current); adCountdownRef.current = null; }
+  };
+  const scheduleNextAd = () => {
+    clearAdTimers();
+    adTimerRef.current = window.setTimeout(() => {
+      if (!currentRadio && !currentTv) return;
+      // Pause underlying media during ad
+      audioRef.current?.pause();
+      videoRef.current?.pause();
+      setAdActive(true);
+      setBigPlayer(true);
+      setAdSkipIn(5);
+      adCountdownRef.current = window.setInterval(() => {
+        setAdSkipIn((s) => (s > 0 ? s - 1 : 0));
+      }, 1000);
+    }, 5 * 60 * 1000);
+  };
+  const closeAd = () => {
+    clearAdTimers();
+    setAdActive(false);
+    setAdSkipIn(5);
+    // Resume playback
+    if (currentRadio) audioRef.current?.play().catch(() => {});
+    else if (currentTv) videoRef.current?.play().catch(() => {});
+    scheduleNextAd();
+  };
+
+  useEffect(() => {
+    if (currentRadio || currentTv) scheduleNextAd();
+    else { clearAdTimers(); setAdActive(false); }
+    return () => clearAdTimers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRadio?.stationuuid, currentTv?.id]);
+
   const inRadioBrowse = !country && !radioCategory;
   const inTvBrowse = !tvCountry && !tvCategory;
 
   return (
     <div className="min-h-screen pb-40">
+      {/* Developer marquee banner */}
+      <div className="sticky top-0 z-[60] w-full overflow-hidden border-b border-border/60" style={{ background: "var(--gradient-primary)" }}>
+        <div className="marquee-track py-1.5 text-xs sm:text-sm font-semibold text-primary-foreground">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <span key={i} className="px-8 inline-flex items-center gap-3">
+              ✨ Built &amp; built by Sam · 📞 Call 0706499848 for Software, Mobile Apps, AI Tools, SEO Optimization, Web Development · Let's take your ideas online ✨
+            </span>
+          ))}
+        </div>
+      </div>
       <audio
         ref={audioRef}
         onPlaying={onPlayingSuccess}
@@ -1042,9 +1097,27 @@ const Index = () => {
                   )}
                 </div>
               )}
+              {adActive && (
+                <div className="absolute inset-0 z-10 bg-black pointer-events-auto flex flex-col">
+                  <div className="flex-1 min-h-0 relative">
+                    <AdSlot />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 px-4 py-3 bg-black/80 border-t border-border/60">
+                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Commercial break</div>
+                    <button
+                      disabled={adSkipIn > 0}
+                      onClick={closeAd}
+                      className="px-4 py-2 rounded-full text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ background: "var(--gradient-primary)", color: "hsl(var(--primary-foreground))" }}
+                    >
+                      {adSkipIn > 0 ? `Skip in ${adSkipIn}s` : "Skip ad ▸"}
+                    </button>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => setBigPlayer(false)}
-                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center pointer-events-auto"
+                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center pointer-events-auto z-20"
                 aria-label="Collapse player"
               >
                 <ChevronDown className="h-5 w-5" />
