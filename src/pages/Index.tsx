@@ -1017,7 +1017,7 @@ const Index = () => {
           }`}
         >
           {bigPlayer && (
-            <div className="flex-1 min-h-0 grid place-items-center relative pointer-events-auto">
+            <div className="flex-1 min-h-0 grid place-items-center relative pointer-events-none">
               {!currentTv && (
                 <div className="text-center px-6">
                   <div className="mx-auto h-56 w-56 sm:h-72 sm:w-72 rounded-3xl overflow-hidden grid place-items-center" style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-glow)" }}>
@@ -1044,7 +1044,7 @@ const Index = () => {
               )}
               <button
                 onClick={() => setBigPlayer(false)}
-                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center"
+                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center pointer-events-auto"
                 aria-label="Collapse player"
               >
                 <ChevronDown className="h-5 w-5" />
