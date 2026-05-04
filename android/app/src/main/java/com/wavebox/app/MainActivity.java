@@ -2,21 +2,26 @@ package com.wavebox.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
-import android.graphics.Typeface;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.view.Gravity;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
-import android.view.animation.AnimationUtils;
+import android.view.animation.ScaleAnimation;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -45,6 +50,8 @@ public class MainActivity extends AppCompatActivity {
     private FrameLayout fullscreenContainer;
     private LinearLayout loadingOverlay;
     private boolean firstLoad = true;
+    private Handler handler = new Handler(Looper.getMainLooper());
+    private BroadcastReceiver webviewControlReceiver;
 
     private static final String APP_URL = "https://internetfm.netlify.app";
 
@@ -57,22 +64,17 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setStatusBarColor(Color.parseColor("#0D0E17"));
         setContentView(R.layout.activity_main);
 
-        webView            = findViewById(R.id.webview);
-        swipeRefreshLayout = findViewById(R.id.swipe_refresh);
-        errorLayout        = findViewById(R.id.error_layout);
-        errorText          = findViewById(R.id.error_text);
-        fullscreenContainer= findViewById(R.id.fullscreen_container);
-        loadingOverlay     = findViewById(R.id.loading_overlay);
+        webView             = findViewById(R.id.webview);
+        swipeRefreshLayout  = findViewById(R.id.swipe_refresh);
+        errorLayout         = findViewById(R.id.error_layout);
+        errorText           = findViewById(R.id.error_text);
+        fullscreenContainer = findViewById(R.id.fullscreen_container);
+        loadingOverlay      = findViewById(R.id.loading_overlay);
 
         setupWebView();
         setupSwipeRefresh();
-
-        // Start background service
-        Intent serviceIntent = new Intent(this, RadioService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            startForegroundService(serviceIntent);
-        else
-            startService(serviceIntent);
+        startRadioService();
+        registerWebViewControlReceiver();
 
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
@@ -80,24 +82,106 @@ public class MainActivity extends AppCompatActivity {
         } else {
             webView.loadUrl(APP_URL);
         }
+
+        // Start pulsing animation on loading icon
+        startLoadingAnimation();
     }
 
-    private void showLoadingOverlay() {
-        if (loadingOverlay != null) loadingOverlay.setVisibility(View.VISIBLE);
+    private void startRadioService() {
+        Intent i = new Intent(this, RadioService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            startForegroundService(i);
+        else
+            startService(i);
+    }
+
+    private void registerWebViewControlReceiver() {
+        webviewControlReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context ctx, Intent intent) {
+                String action = intent.getStringExtra("action");
+                if (action == null) return;
+                switch (action) {
+                    case "next":
+                        webView.evaluateJavascript(
+                            "(function(){ var btns=document.querySelectorAll('[aria-label*=next],[aria-label*=Next],[class*=next]'); if(btns.length>0)btns[0].click(); })()", null);
+                        break;
+                    case "prev":
+                        webView.evaluateJavascript(
+                            "(function(){ var btns=document.querySelectorAll('[aria-label*=prev],[aria-label*=Prev],[class*=prev]'); if(btns.length>0)btns[0].click(); })()", null);
+                        break;
+                    case "play":
+                    case "pause":
+                        webView.evaluateJavascript(
+                            "(function(){ var btns=document.querySelectorAll('button[aria-label*=play],button[aria-label*=Play],button[aria-label*=pause]'); if(btns.length>0)btns[0].click(); })()", null);
+                        break;
+                }
+            }
+        };
+        IntentFilter f = new IntentFilter("com.wavebox.app.WEBVIEW_CONTROL");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            registerReceiver(webviewControlReceiver, f, Context.RECEIVER_NOT_EXPORTED);
+        else
+            registerReceiver(webviewControlReceiver, f);
+    }
+
+    private void startLoadingAnimation() {
+        TextView icon = findViewById(R.id.loading_icon);
+        if (icon == null) return;
+        ScaleAnimation pulse = new ScaleAnimation(
+            1f, 1.15f, 1f, 1.15f,
+            Animation.RELATIVE_TO_SELF, 0.5f,
+            Animation.RELATIVE_TO_SELF, 0.5f);
+        pulse.setDuration(700);
+        pulse.setRepeatMode(Animation.REVERSE);
+        pulse.setRepeatCount(Animation.INFINITE);
+        icon.startAnimation(pulse);
+
+        // Animate dots
+        animateDots(0);
+    }
+
+    private void animateDots(int step) {
+        TextView dots = findViewById(R.id.loading_dots);
+        if (dots == null || loadingOverlay.getVisibility() != View.VISIBLE) return;
+        String[] states = {"●  ○  ○", "○  ●  ○", "○  ○  ●"};
+        dots.setText(states[step % 3]);
+        handler.postDelayed(() -> animateDots(step + 1), 400);
     }
 
     private void hideLoadingOverlay() {
         if (loadingOverlay == null) return;
+        playOpeningChime();
         AlphaAnimation fade = new AlphaAnimation(1f, 0f);
-        fade.setDuration(500);
+        fade.setDuration(600);
         fade.setAnimationListener(new Animation.AnimationListener() {
             public void onAnimationStart(Animation a) {}
             public void onAnimationRepeat(Animation a) {}
             public void onAnimationEnd(Animation a) {
                 loadingOverlay.setVisibility(View.GONE);
+                handler.removeCallbacksAndMessages(null);
             }
         });
         loadingOverlay.startAnimation(fade);
+    }
+
+    private void playOpeningChime() {
+        // Play a short pleasant ascending chime as content reveals
+        new Thread(() -> {
+            try {
+                int[] tones = {
+                    ToneGenerator.TONE_CDMA_HIGH_PBX_L,
+                    ToneGenerator.TONE_CDMA_MED_PBX_L,
+                    ToneGenerator.TONE_CDMA_HIGH_PBX_SS
+                };
+                for (int tone : tones) {
+                    ToneGenerator tg = new ToneGenerator(AudioManager.STREAM_MUSIC, 45);
+                    tg.startTone(tone, 180);
+                    Thread.sleep(200);
+                    tg.release();
+                }
+            } catch (Exception ignored) {}
+        }).start();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -125,7 +209,10 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPageStarted(WebView v, String url, android.graphics.Bitmap f) {
                 super.onPageStarted(v, url, f);
-                if (firstLoad) showLoadingOverlay();
+                if (firstLoad) {
+                    if (loadingOverlay != null) loadingOverlay.setVisibility(View.VISIBLE);
+                    startLoadingAnimation();
+                }
                 errorLayout.setVisibility(View.GONE);
             }
             @Override
@@ -139,7 +226,7 @@ public class MainActivity extends AppCompatActivity {
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
                 if (req.isForMainFrame()) {
                     swipeRefreshLayout.setRefreshing(false);
-                    hideLoadingOverlay();
+                    if (loadingOverlay != null) loadingOverlay.setVisibility(View.GONE);
                     errorLayout.setVisibility(View.VISIBLE);
                     errorText.setText("No internet connection.\nPull down to retry.");
                 }
@@ -164,7 +251,8 @@ public class MainActivity extends AppCompatActivity {
                 customView = view; customViewCallback = cb;
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
                 getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
                     View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
@@ -187,8 +275,6 @@ public class MainActivity extends AppCompatActivity {
             public void onPermissionRequest(PermissionRequest r) { r.grant(r.getResources()); }
             @Override
             public boolean onConsoleMessage(ConsoleMessage m) { return true; }
-            @Override
-            public void onProgressChanged(WebView v, int p) {}
         });
     }
 
@@ -225,12 +311,17 @@ public class MainActivity extends AppCompatActivity {
     @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); webView.saveState(o); }
     @Override protected void onResume()  { super.onResume();  webView.onResume();  webView.resumeTimers(); }
     @Override protected void onPause()   { super.onPause();   webView.onPause();   webView.pauseTimers(); }
-    @Override protected void onDestroy() { if (webView!=null){webView.stopLoading();webView.destroy();} super.onDestroy(); }
+    @Override protected void onDestroy() {
+        try { unregisterReceiver(webviewControlReceiver); } catch (Exception ignored) {}
+        handler.removeCallbacksAndMessages(null);
+        if (webView != null) { webView.stopLoading(); webView.destroy(); }
+        super.onDestroy();
+    }
 
     public static class WaveboxBridge {
         private final Activity a;
-        WaveboxBridge(Activity a){this.a=a;}
-        @JavascriptInterface public String getAppVersion(){return "1.0.0";}
-        @JavascriptInterface public boolean isAndroidApp(){return true;}
+        WaveboxBridge(Activity a) { this.a = a; }
+        @JavascriptInterface public String getAppVersion() { return "1.0.0"; }
+        @JavascriptInterface public boolean isAndroidApp() { return true; }
     }
 }
