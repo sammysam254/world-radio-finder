@@ -630,6 +630,16 @@ const Index = () => {
 
   return (
     <div className="min-h-screen pb-40">
+      {/* Developer marquee banner */}
+      <div className="sticky top-0 z-[60] w-full overflow-hidden border-b border-border/60" style={{ background: "var(--gradient-primary)" }}>
+        <div className="marquee-track py-1.5 text-xs sm:text-sm font-semibold text-primary-foreground">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <span key={i} className="px-8 inline-flex items-center gap-3">
+              ✨ Built &amp; built by Sam · 📞 Call 0706499848 for Software, Mobile Apps, AI Tools, SEO Optimization, Web Development · Let's take your ideas online ✨
+            </span>
+          ))}
+        </div>
+      </div>
       <audio
         ref={audioRef}
         onPlaying={onPlayingSuccess}
