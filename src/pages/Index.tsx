@@ -1068,7 +1068,7 @@ const Index = () => {
         controls={false}
         className={
           currentTv && bigPlayer
-            ? "fixed z-[55] left-0 right-0 top-[56px] bottom-[196px] w-full h-auto object-contain bg-black"
+            ? "fixed z-[55] left-0 right-0 top-[48px] bottom-[216px] w-full h-full object-contain bg-black"
             : "hidden"
         }
         onPlaying={onPlayingSuccess}
