@@ -576,8 +576,8 @@ const Index = () => {
     const p = playbackRef.current;
     if (p) {
       const url = p.urls[p.idx];
-      if (currentRadio) saveCachedUrl(currentRadio.stationuuid, url);
-      else if (currentTv) saveCachedUrl(currentTv.id, url);
+      if (currentRadio) { saveCachedUrl(currentRadio.stationuuid, url); recordSuccess(currentRadio.stationuuid); }
+      else if (currentTv) { saveCachedUrl(currentTv.id, url); recordSuccess(currentTv.id); }
     }
   };
 
