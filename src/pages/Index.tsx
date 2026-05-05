@@ -527,6 +527,7 @@ const Index = () => {
       return;
     }
     playbackRef.current = { type: "tv", urls, idx: 0, attempt: 1, startedAt: Date.now() };
+    recordAttempt(ch.id);
     armStationTimeout("tv");
     setBigPlayer(true);
     startTvUrl(urls[0]);
