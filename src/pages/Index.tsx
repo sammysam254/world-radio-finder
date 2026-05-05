@@ -422,20 +422,16 @@ const Index = () => {
     const p = playbackRef.current;
     if (!p) return;
     clearPlaybackTimer();
-    if (p.idx + 1 >= p.urls.length) {
-      const remaining = 30000 - (Date.now() - p.startedAt);
-      if (remaining <= 0) {
-        skipAfterThirtySeconds(reason || "all mirrors failed");
-      } else {
-        setPlayError(`All mirrors failed${reason ? ` (${reason})` : ""}. Waiting 30s before skipping…`);
-        clearStationTimer();
-        p.stationTimer = window.setTimeout(() => skipAfterThirtySeconds(reason || "all mirrors failed"), remaining);
-      }
+    // Cap total attempts: try every mirror, but never exceed DEAD_TRIES tries total.
+    if (p.idx + 1 >= p.urls.length || p.attempt >= DEAD_TRIES) {
+      skipAfterTimeout(reason || "all mirrors failed");
       return;
     }
     p.idx += 1;
     p.attempt += 1;
-    setPlayError(`Retrying… (${p.idx + 1}/${p.urls.length})`);
+    setPlayError(`Retrying… (${p.attempt}/${DEAD_TRIES})`);
+    const id = currentRadio?.stationuuid || currentTv?.id;
+    if (id) recordAttempt(id);
     if (p.type === "radio") startRadioUrl(p.urls[p.idx]);
     else startTvUrl(p.urls[p.idx]);
   };
