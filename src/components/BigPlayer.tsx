@@ -36,7 +36,7 @@ type Props = {
   buffering: boolean;
   playError: string | null;
   netQuality: "low" | "mid" | "high";
-  videoEl: React.ReactNode; // <video> for TV (already in DOM)
+  videoEl: React.ReactNode;
   volume: number;
   muted: boolean;
   onVolumeChange: (v: number) => void;
@@ -45,7 +45,6 @@ type Props = {
   onTogglePlay: () => void;
   onSkip: (dir: 1 | -1) => void;
   onFullscreen: () => void;
-  // Dropdown playlist
   playlist: PlaylistItem[];
   currentId: string;
   onSelect: (id: string) => void;
@@ -81,8 +80,8 @@ export default function BigPlayer({
   const tvSurfaceRef = useRef<HTMLDivElement | null>(null);
   const hudTimer = useRef<number | null>(null);
 
-  const showHud = (kind: "vol" | "bri", val: number) => {
-    if (kind === "vol") setHudVolume(val);
+  const showHud = (k: "vol" | "bri", val: number) => {
+    if (k === "vol") setHudVolume(val);
     else setHudBrightness(val);
     if (hudTimer.current) window.clearTimeout(hudTimer.current);
     hudTimer.current = window.setTimeout(() => {
@@ -91,24 +90,16 @@ export default function BigPlayer({
     }, 900);
   };
 
-  // Touch swipe gestures on TV surface: left half = brightness, right half = volume.
   useEffect(() => {
     if (kind !== "tv") return;
     const el = tvSurfaceRef.current;
     if (!el) return;
-
-    let startY = 0;
-    let startX = 0;
-    let side: "left" | "right" | null = null;
-    let startVal = 0;
-    let active = false;
-
+    let startY = 0, startX = 0, side: "left" | "right" | null = null, startVal = 0, active = false;
     const onStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
       const t = e.touches[0];
       const rect = el.getBoundingClientRect();
-      startY = t.clientY;
-      startX = t.clientX;
+      startY = t.clientY; startX = t.clientX;
       side = t.clientX - rect.left < rect.width / 2 ? "left" : "right";
       startVal = side === "right" ? volume : brightnessRef.current;
       active = true;
@@ -121,11 +112,10 @@ export default function BigPlayer({
       if (Math.abs(dy) < 10 || dx > Math.abs(dy)) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
-      const ratio = dy / rect.height; // up = positive
+      const ratio = dy / rect.height;
       if (side === "right") {
         const next = Math.min(100, Math.max(0, Math.round(startVal + ratio * 150)));
-        onVolumeChange(next);
-        showHud("vol", next);
+        onVolumeChange(next); showHud("vol", next);
       } else {
         const next = Math.min(1, Math.max(0.2, +(startVal + ratio * 1.2).toFixed(2)));
         brightnessRef.current = next;
@@ -133,11 +123,7 @@ export default function BigPlayer({
         showHud("bri", Math.round(next * 100));
       }
     };
-    const onEnd = () => {
-      active = false;
-      side = null;
-    };
-
+    const onEnd = () => { active = false; side = null; };
     el.addEventListener("touchstart", onStart, { passive: true });
     el.addEventListener("touchmove", onMove, { passive: false });
     el.addEventListener("touchend", onEnd);
@@ -156,8 +142,9 @@ export default function BigPlayer({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      {/* Top bar — In-app navigation */}
-      <div className="flex items-center justify-between gap-2 px-3 py-3 border-b border-border/60 glass">
+
+      {/* Top bar */}
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/60 glass shrink-0">
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Back">
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -167,8 +154,7 @@ export default function BigPlayer({
         </div>
         <div className="flex items-center gap-1">
           <Button
-            variant="ghost"
-            size="icon"
+            variant="ghost" size="icon"
             onClick={() => setListOpen((o) => !o)}
             aria-label="Channel list"
             className={listOpen ? "text-primary" : ""}
@@ -186,10 +172,10 @@ export default function BigPlayer({
         </div>
       </div>
 
-      {/* Main surface */}
+      {/* Main content area */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
         {kind === "tv" ? (
-          <div ref={tvSurfaceRef} className="absolute inset-0 bg-black select-none touch-none">
+          <div ref={tvSurfaceRef} className="absolute inset-0 bg-black select-none touch-none flex items-center justify-center">
             {videoEl}
             {hudVolume !== null && (
               <div className="absolute top-1/2 right-6 -translate-y-1/2 px-4 py-3 rounded-2xl bg-black/70 backdrop-blur text-sm flex items-center gap-2 pointer-events-none">
@@ -208,22 +194,17 @@ export default function BigPlayer({
             )}
           </div>
         ) : (
-          // Spotify-like radio surface
           <div
             className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6"
             style={{ background: "var(--gradient-card)" }}
           >
             <div
-              className="h-64 w-64 sm:h-80 sm:w-80 rounded-3xl overflow-hidden grid place-items-center shrink-0"
+              className="h-64 w-64 sm:h-72 sm:w-72 rounded-3xl overflow-hidden grid place-items-center shrink-0"
               style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
             >
               {artwork ? (
-                <img
-                  src={artwork}
-                  alt=""
-                  className="h-full w-full object-cover"
-                  onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-                />
+                <img src={artwork} alt="" className="h-full w-full object-cover"
+                  onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
               ) : (
                 <RadioIcon className="h-24 w-24 text-primary-foreground" />
               )}
@@ -242,18 +223,17 @@ export default function BigPlayer({
           </div>
         )}
 
-        {/* Slide-down dropdown of stations/channels */}
+        {/* Slide-down playlist */}
         {listOpen && (
           <div className="absolute inset-x-0 top-0 bottom-0 z-20 bg-background/95 backdrop-blur-xl flex flex-col animate-fade-in">
             <div className="px-4 pt-4 pb-2 flex items-center gap-2 border-b border-border/60">
               <input
-                autoFocus
-                value={filter}
+                autoFocus value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder={kind === "radio" ? "Search stations…" : "Search channels…"}
                 className="flex-1 h-11 px-4 rounded-full bg-secondary/60 border border-border/60 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
-              <Button variant="ghost" size="icon" onClick={() => setListOpen(false)} aria-label="Close list">
+              <Button variant="ghost" size="icon" onClick={() => setListOpen(false)}>
                 <ChevronDown className="h-5 w-5" />
               </Button>
             </div>
@@ -261,19 +241,14 @@ export default function BigPlayer({
               {filtered.map((p) => {
                 const active = p.id === currentId;
                 return (
-                  <button
-                    key={p.id}
-                    onClick={() => {
-                      onSelect(p.id);
-                      setListOpen(false);
-                    }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-border/30 transition-colors hover:bg-secondary/40 ${
-                      active ? "bg-primary/10" : ""
-                    } ${p.dead ? "opacity-50" : ""}`}
+                  <button key={p.id}
+                    onClick={() => { onSelect(p.id); setListOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-border/30 transition-colors hover:bg-secondary/40 ${active ? "bg-primary/10" : ""} ${p.dead ? "opacity-50" : ""}`}
                   >
                     <div className="h-10 w-10 rounded-lg bg-secondary overflow-hidden grid place-items-center shrink-0">
                       {p.logo ? (
-                        <img src={p.logo} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+                        <img src={p.logo} alt="" className="h-full w-full object-cover"
+                          onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
                       ) : kind === "radio" ? (
                         <RadioIcon className="h-5 w-5 text-muted-foreground" />
                       ) : (
@@ -284,8 +259,7 @@ export default function BigPlayer({
                       <div className={`font-semibold truncate ${active ? "text-primary" : ""}`}>{p.name}</div>
                       {p.subtitle && (
                         <div className="text-xs text-muted-foreground truncate">
-                          {p.subtitle}
-                          {p.dead ? " · offline" : ""}
+                          {p.subtitle}{p.dead ? " · offline" : ""}
                         </div>
                       )}
                     </div>
@@ -301,48 +275,49 @@ export default function BigPlayer({
         )}
       </div>
 
-      {/* Bottom controls */}
-      <div className="border-t border-border/60 glass px-3 py-3 flex flex-col gap-2">
-        {playError && (
-          <div className="text-xs text-destructive truncate px-1">{playError}</div>
-        )}
-        <div className="flex items-center gap-2">
-          <div className="flex-1 min-w-0">
-            <div className="text-xs text-muted-foreground flex items-center gap-1">
-              {netQuality === "low" ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
-              <span className="uppercase tracking-wider">{netQuality}</span>
-            </div>
-            <div className="font-semibold truncate text-sm">{title}</div>
+      {/* Bottom controls — always fully visible */}
+      <div className="border-t border-border/60 glass px-4 pt-4 pb-6 flex flex-col gap-4 shrink-0">
+
+        {/* Station info */}
+        <div className="min-w-0">
+          <div className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+            {netQuality === "low" ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
+            <span className="uppercase tracking-wider">{netQuality}</span>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => onSkip(-1)} aria-label="Previous">
-            <SkipBack className="h-5 w-5" />
+          <div className="font-bold truncate text-base">{title}</div>
+          {subtitle && <div className="text-xs text-muted-foreground truncate">{subtitle}</div>}
+          {playError && <div className="text-xs text-destructive mt-1 truncate">{playError}</div>}
+        </div>
+
+        {/* Play / Prev / Next — large and centered */}
+        <div className="flex items-center justify-center gap-8">
+          <Button variant="ghost" size="icon" onClick={() => onSkip(-1)} aria-label="Previous" className="h-14 w-14">
+            <SkipBack className="h-7 w-7" />
           </Button>
           <Button
-            size="icon"
-            onClick={onTogglePlay}
-            className="h-12 w-12 rounded-full"
-            style={{ background: "var(--gradient-primary)" }}
+            size="icon" onClick={onTogglePlay}
+            className="h-18 w-18 rounded-full"
+            style={{ background: "var(--gradient-primary)", width: 72, height: 72 }}
           >
-            {buffering ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : playing ? (
-              <Pause className="h-5 w-5" />
-            ) : (
-              <Play className="h-5 w-5" />
-            )}
+            {buffering
+              ? <Loader2 className="h-8 w-8 animate-spin" />
+              : playing
+              ? <Pause className="h-8 w-8" />
+              : <Play className="h-8 w-8" />}
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => onSkip(1)} aria-label="Next">
-            <SkipForward className="h-5 w-5" />
+          <Button variant="ghost" size="icon" onClick={() => onSkip(1)} aria-label="Next" className="h-14 w-14">
+            <SkipForward className="h-7 w-7" />
           </Button>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={onMuteToggle} aria-label="Mute">
-            {muted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+
+        {/* Volume */}
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={onMuteToggle} aria-label="Mute" className="shrink-0">
+            {muted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
           </Button>
           <Slider
             value={[muted ? 0 : volume]}
-            max={100}
-            step={1}
+            max={100} step={1}
             onValueChange={(v) => onVolumeChange(v[0])}
             className="flex-1"
           />

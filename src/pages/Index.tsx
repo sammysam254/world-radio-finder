@@ -648,7 +648,7 @@ const Index = () => {
         <div className="marquee-track py-1.5 text-xs sm:text-sm font-semibold text-primary-foreground">
           {Array.from({ length: 2 }).map((_, i) => (
             <span key={i} className="px-8 inline-flex items-center gap-3">
-              ✨ Built &amp; built by Sam · 📞 Call 0706499848 for Software, Mobile Apps, AI Tools, SEO Optimization, Web Development · Let's take your ideas online ✨
+              This system is developed and is the property of Sam. Please call 0706499848 for Softwares, AI Tools, Websites, SEO Optimization, Mobile Apps and any other custom tool
             </span>
           ))}
         </div>
@@ -1068,7 +1068,7 @@ const Index = () => {
         controls={false}
         className={
           currentTv && bigPlayer
-            ? "fixed z-[55] left-0 right-0 top-[60px] bottom-[148px] w-full object-contain bg-black"
+            ? "fixed z-[55] left-0 right-0 top-[56px] bottom-[196px] w-full h-auto object-contain bg-black"
             : "hidden"
         }
         onPlaying={onPlayingSuccess}
