@@ -502,6 +502,7 @@ const Index = () => {
     const baseUrls = Array.from(new Set([s.url_resolved, s.url].filter(Boolean)));
     const urls = orderUrlsWithCache(s.stationuuid, baseUrls);
     playbackRef.current = { type: "radio", urls, idx: 0, attempt: 1, startedAt: Date.now() };
+    recordAttempt(s.stationuuid);
     setBigPlayer(true);
     armStationTimeout("radio");
     startRadioUrl(urls[0]);
