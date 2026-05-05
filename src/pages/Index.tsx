@@ -7,6 +7,8 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Play, Pause, Search, Radio, Volume2, VolumeX, Globe2, Loader2, Tv, Newspaper, Trophy, Music2, Sparkles, Layers, MapPin, SkipBack, SkipForward, Maximize2, Minimize2, ChevronUp, ChevronDown, Wifi, WifiOff } from "lucide-react";
 import AdSlot from "@/components/AdSlot";
+import BigPlayer, { PlaylistItem } from "@/components/BigPlayer";
+import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead, getEntry, DEAD_TRIES } from "@/lib/reliability";
 
 type Country = { name: string; iso_3166_1: string; stationcount: number };
 type Station = {
@@ -335,13 +337,20 @@ const Index = () => {
   const filteredStations = useMemo(() => {
     const cat = RADIO_CATEGORIES.find((c) => c.id === category);
     const q = search.toLowerCase();
-    return stations.filter((s) => {
+    const base = stations.filter((s) => {
       const hay = `${s.name} ${s.tags}`.toLowerCase();
       const matchSearch = !q || hay.includes(q);
       const matchCat = !cat || cat.tags.length === 0 || cat.tags.some((t) => hay.includes(t));
       return matchSearch && matchCat;
     });
-  }, [stations, search, category]);
+    const ranked = sortByReliability(base, (s) => s.stationuuid);
+    // Currently playing always first
+    if (currentRadio) {
+      const i = ranked.findIndex((s) => s.stationuuid === currentRadio.stationuuid);
+      if (i > 0) { const [cur] = ranked.splice(i, 1); ranked.unshift(cur); }
+    }
+    return ranked;
+  }, [stations, search, category, currentRadio?.stationuuid, playing]);
 
   const filteredTvCountries = useMemo(
     () => tvCountries.filter((c) => c.name.toLowerCase().includes(tvCountrySearch.toLowerCase())),
@@ -349,10 +358,16 @@ const Index = () => {
   );
   const filteredTvChannels = useMemo(() => {
     const q = tvSearch.toLowerCase();
-    return tvChannels.filter(
+    const base = tvChannels.filter(
       (c) => !q || c.name.toLowerCase().includes(q) || c.categories.join(" ").toLowerCase().includes(q)
     );
-  }, [tvChannels, tvSearch]);
+    const ranked = sortByReliability(base, (c) => c.id);
+    if (currentTv) {
+      const i = ranked.findIndex((c) => c.id === currentTv.id);
+      if (i > 0) { const [cur] = ranked.splice(i, 1); ranked.unshift(cur); }
+    }
+    return ranked;
+  }, [tvChannels, tvSearch, currentTv?.id, playing]);
 
   // ===== Playback with multi-URL fallback retry =====
   const clearPlaybackTimer = () => {
@@ -369,14 +384,17 @@ const Index = () => {
     }
   };
 
-  const skipAfterThirtySeconds = (reason?: string) => {
+  const skipAfterTimeout = (reason?: string) => {
     const p = playbackRef.current;
     if (!p) return;
     clearPlaybackTimer();
     clearStationTimer();
     setPlaying(false);
     setBuffering(false);
-    setPlayError(`No playback after 30s${reason ? ` (${reason})` : ""}. Skipping…`);
+    // Mark this station as failed for reliability ranking
+    const id = currentRadio?.stationuuid || currentTv?.id;
+    if (id) recordFailure(id);
+    setPlayError(`Couldn't play after ${p.attempt} ${p.attempt === 1 ? "try" : "tries"}${reason ? ` (${reason})` : ""}. Skipping…`);
     window.setTimeout(() => skipStationRef.current?.(1), 250);
   };
 
@@ -395,46 +413,38 @@ const Index = () => {
     }
   };
 
+  // Each attempt gets up to 60s to start. If not playing by then, try the next mirror.
   const armReadinessCheck = (kind: "radio" | "tv") => {
     clearPlaybackTimer();
     const el = kind === "radio" ? audioRef.current : videoRef.current;
     if (!el || !playbackRef.current) return;
-    // Retry the next mirror before the 30s station/channel timeout expires.
     playbackRef.current.timer = window.setTimeout(() => {
       const isReady = el && !el.paused && el.readyState >= 2;
-      if (!isReady) tryNextSource("Stream not ready");
-    }, 10000);
+      if (!isReady) tryNextSource("60s no playback");
+    }, 60_000);
   };
 
-  const armStationTimeout = (kind: "radio" | "tv") => {
+  // After 5 attempts (DEAD_TRIES) without success across mirrors, give up and skip.
+  const armStationTimeout = (_kind: "radio" | "tv") => {
     clearStationTimer();
-    const startedAt = playbackRef.current?.startedAt ?? Date.now();
-    const remaining = Math.max(0, 30000 - (Date.now() - startedAt));
-    playbackRef.current!.stationTimer = window.setTimeout(() => {
-      const el = kind === "radio" ? audioRef.current : videoRef.current;
-      const isReady = el && !el.paused && el.readyState >= 2;
-      if (!isReady) skipAfterThirtySeconds("timeout");
-    }, remaining);
+    // No outer timer needed — armReadinessCheck enforces 60s per attempt,
+    // and tryNextSource enforces the 5-attempt cap below.
   };
 
   const tryNextSource = (reason?: string) => {
     const p = playbackRef.current;
     if (!p) return;
     clearPlaybackTimer();
-    if (p.idx + 1 >= p.urls.length) {
-      const remaining = 30000 - (Date.now() - p.startedAt);
-      if (remaining <= 0) {
-        skipAfterThirtySeconds(reason || "all mirrors failed");
-      } else {
-        setPlayError(`All mirrors failed${reason ? ` (${reason})` : ""}. Waiting 30s before skipping…`);
-        clearStationTimer();
-        p.stationTimer = window.setTimeout(() => skipAfterThirtySeconds(reason || "all mirrors failed"), remaining);
-      }
+    // Cap total attempts: try every mirror, but never exceed DEAD_TRIES tries total.
+    if (p.idx + 1 >= p.urls.length || p.attempt >= DEAD_TRIES) {
+      skipAfterTimeout(reason || "all mirrors failed");
       return;
     }
     p.idx += 1;
     p.attempt += 1;
-    setPlayError(`Retrying… (${p.idx + 1}/${p.urls.length})`);
+    setPlayError(`Retrying… (${p.attempt}/${DEAD_TRIES})`);
+    const id = currentRadio?.stationuuid || currentTv?.id;
+    if (id) recordAttempt(id);
     if (p.type === "radio") startRadioUrl(p.urls[p.idx]);
     else startTvUrl(p.urls[p.idx]);
   };
@@ -505,6 +515,7 @@ const Index = () => {
     const baseUrls = Array.from(new Set([s.url_resolved, s.url].filter(Boolean)));
     const urls = orderUrlsWithCache(s.stationuuid, baseUrls);
     playbackRef.current = { type: "radio", urls, idx: 0, attempt: 1, startedAt: Date.now() };
+    recordAttempt(s.stationuuid);
     setBigPlayer(true);
     armStationTimeout("radio");
     startRadioUrl(urls[0]);
@@ -529,6 +540,7 @@ const Index = () => {
       return;
     }
     playbackRef.current = { type: "tv", urls, idx: 0, attempt: 1, startedAt: Date.now() };
+    recordAttempt(ch.id);
     armStationTimeout("tv");
     setBigPlayer(true);
     startTvUrl(urls[0]);
@@ -558,13 +570,14 @@ const Index = () => {
   skipStationRef.current = skipStation;
 
   const toggleFullscreen = () => {
-    const el = playerWrapRef.current;
-    if (!el) return;
     if (document.fullscreenElement) {
       document.exitFullscreen?.();
-    } else {
-      el.requestFullscreen?.();
+      return;
     }
+    // Prefer the video element for TV so native controls/scaling kick in
+    const target: any = currentTv ? videoRef.current : playerWrapRef.current;
+    if (!target) return;
+    (target.requestFullscreen?.() || target.webkitEnterFullscreen?.());
   };
 
   const onPlayingSuccess = () => {
@@ -577,8 +590,8 @@ const Index = () => {
     const p = playbackRef.current;
     if (p) {
       const url = p.urls[p.idx];
-      if (currentRadio) saveCachedUrl(currentRadio.stationuuid, url);
-      else if (currentTv) saveCachedUrl(currentTv.id, url);
+      if (currentRadio) { saveCachedUrl(currentRadio.stationuuid, url); recordSuccess(currentRadio.stationuuid); }
+      else if (currentTv) { saveCachedUrl(currentTv.id, url); recordSuccess(currentTv.id); }
     }
   };
 
@@ -1047,14 +1060,15 @@ const Index = () => {
         </Tabs>
       </div>
 
-      {/* Persistent video element for TV (always mounted so ref is stable) */}
+      {/* Persistent video element for TV (always mounted so ref is stable).
+          Positioned to fill the BigPlayer's video surface area. */}
       <video
         ref={videoRef}
         playsInline
-        controls={bigPlayer && !!currentTv}
+        controls={false}
         className={
           currentTv && bigPlayer
-            ? "fixed z-40 left-0 right-0 top-0 bottom-[72px] w-full h-[calc(100vh-72px)] object-contain bg-black"
+            ? "fixed z-[55] left-0 right-0 top-[60px] bottom-[148px] w-full object-contain bg-black"
             : "hidden"
         }
         onPlaying={onPlayingSuccess}
@@ -1063,72 +1077,87 @@ const Index = () => {
         onError={() => tryNextSource("video error")}
       />
 
-      {/* Player */}
-      {(currentRadio || currentTv) && (
-        <div
-          ref={playerWrapRef}
-          className={`fixed z-50 transition-all ${
-            bigPlayer ? "inset-0 flex flex-col pointer-events-none" : "bottom-0 inset-x-0 glass border-t border-border/60"
-          }`}
-        >
-          {bigPlayer && (
-            <div className="flex-1 min-h-0 grid place-items-center relative pointer-events-none">
-              {!currentTv && (
-                <div className="text-center px-6">
-                  <div className="mx-auto h-56 w-56 sm:h-72 sm:w-72 rounded-3xl overflow-hidden grid place-items-center" style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-glow)" }}>
-                    {currentRadio?.favicon ? (
-                      <img src={currentRadio.favicon} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
-                    ) : (
-                      <Radio className="h-24 w-24 text-primary" />
-                    )}
-                  </div>
-                  <h3 className="mt-6 text-2xl font-black">{currentRadio?.name?.trim()}</h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {currentRadio?.countrycode ? flag(currentRadio.countrycode) + " " : ""}
-                    {currentRadio?.country} · {currentRadio?.codec}
-                    {currentRadio?.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}
-                  </p>
-                  {playing && (
-                    <div className="flex items-end justify-center h-8 mt-4 gap-0.5">
-                      {Array.from({ length: 18 }).map((_, i) => (
-                        <span key={i} className="equalizer-bar" style={{ animationDelay: `${i * 0.07}s` }} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {adActive && (
-                <div className="absolute inset-0 z-10 bg-black pointer-events-auto flex flex-col">
-                  <div className="flex-1 min-h-0 relative">
-                    <AdSlot />
-                  </div>
-                  <div className="flex items-center justify-between gap-3 px-4 py-3 bg-black/80 border-t border-border/60">
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Commercial break</div>
-                    <button
-                      disabled={adSkipIn > 0}
-                      onClick={closeAd}
-                      className="px-4 py-2 rounded-full text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{ background: "var(--gradient-primary)", color: "hsl(var(--primary-foreground))" }}
-                    >
-                      {adSkipIn > 0 ? `Skip in ${adSkipIn}s` : "Skip ad ▸"}
-                    </button>
-                  </div>
-                </div>
-              )}
-              <button
-                onClick={() => setBigPlayer(false)}
-                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center pointer-events-auto z-20"
-                aria-label="Collapse player"
-              >
-                <ChevronDown className="h-5 w-5" />
-              </button>
+      {/* Big player overlay (Spotify-like for radio, YouTube-like for TV) */}
+      {(currentRadio || currentTv) && bigPlayer && (
+        <div ref={playerWrapRef} className="contents">
+          <BigPlayer
+            kind={currentTv ? "tv" : "radio"}
+            title={(currentRadio?.name || currentTv?.name || "").trim()}
+            subtitle={
+              currentRadio
+                ? `${currentRadio.countrycode ? flag(currentRadio.countrycode) + " " : ""}${currentRadio.country} · ${currentRadio.codec}${currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}`
+                : currentTv
+                ? `${flag(currentTv.country)} ${currentTv.categories.slice(0, 2).join(" · ") || "TV"}`
+                : undefined
+            }
+            artwork={currentRadio?.favicon || currentTv?.logo}
+            playing={playing}
+            buffering={buffering}
+            playError={playError}
+            netQuality={netQuality}
+            videoEl={null}
+            volume={volume}
+            muted={muted}
+            onVolumeChange={(v) => { setVolume(v); setMuted(false); }}
+            onMuteToggle={() => setMuted((m) => !m)}
+            onClose={() => setBigPlayer(false)}
+            onTogglePlay={togglePlay}
+            onSkip={skipStation}
+            onFullscreen={toggleFullscreen}
+            playlist={
+              currentTv
+                ? filteredTvChannels.map<PlaylistItem>((c) => ({
+                    id: c.id,
+                    name: c.name,
+                    subtitle: `${flag(c.country)} ${c.categories.slice(0, 2).join(" · ") || "TV"}`,
+                    logo: c.logo,
+                    dead: isDead(c.id),
+                  }))
+                : filteredStations.map<PlaylistItem>((s) => ({
+                    id: s.stationuuid,
+                    name: s.name.trim() || "Unknown",
+                    subtitle: `${s.countrycode ? flag(s.countrycode) + " " : ""}${s.country}${s.bitrate ? ` · ${s.bitrate}kbps` : ""}`,
+                    logo: s.favicon,
+                    dead: isDead(s.stationuuid),
+                  }))
+            }
+            currentId={currentTv?.id || currentRadio?.stationuuid || ""}
+            onSelect={(id) => {
+              if (currentTv) {
+                const ch = filteredTvChannels.find((c) => c.id === id);
+                if (ch) playTv(ch);
+              } else {
+                const s = filteredStations.find((x) => x.stationuuid === id);
+                if (s) playRadio(s);
+              }
+            }}
+          />
+          {adActive && (
+            <div className="fixed inset-0 z-[60] bg-black flex flex-col">
+              <div className="flex-1 min-h-0 relative"><AdSlot /></div>
+              <div className="flex items-center justify-between gap-3 px-4 py-3 bg-black/80 border-t border-border/60">
+                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Commercial break</div>
+                <button
+                  disabled={adSkipIn > 0}
+                  onClick={closeAd}
+                  className="px-4 py-2 rounded-full text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: "var(--gradient-primary)", color: "hsl(var(--primary-foreground))" }}
+                >
+                  {adSkipIn > 0 ? `Skip in ${adSkipIn}s` : "Skip ad ▸"}
+                </button>
+              </div>
             </div>
           )}
+        </div>
+      )}
 
-          <div className={`container py-4 flex items-center gap-2 sm:gap-4 ${bigPlayer ? "pointer-events-auto glass border-t border-border/60" : ""}`}>
+      {/* Compact mini-player (only when BigPlayer is collapsed) */}
+      {(currentRadio || currentTv) && !bigPlayer && (
+        <div className="fixed z-50 bottom-0 inset-x-0 glass border-t border-border/60">
+          <div className="container py-3 flex items-center gap-2 sm:gap-3">
             <div
               className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-              onClick={() => !bigPlayer && setBigPlayer(true)}
+              onClick={() => setBigPlayer(true)}
             >
               <div className="relative h-12 w-12 rounded-xl bg-secondary overflow-hidden shrink-0 grid place-items-center">
                 {currentRadio?.favicon ? (
@@ -1142,53 +1171,31 @@ const Index = () => {
                 )}
               </div>
               <div className="min-w-0">
-                <div className="font-semibold truncate">{(currentRadio?.name || currentTv?.name || "").trim()}</div>
+                <div className="font-semibold truncate text-sm">{(currentRadio?.name || currentTv?.name || "").trim()}</div>
                 <div className="text-xs text-muted-foreground truncate flex items-center gap-1">
                   {netQuality === "low" ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
                   <span className="uppercase tracking-wider">{netQuality}</span>
-                  <span>·</span>
-                  {playError ? (
-                    <span className="text-destructive truncate">{playError}</span>
-                  ) : currentRadio ? (
-                    <span className="truncate">{currentRadio.countrycode ? flag(currentRadio.countrycode) + " " : ""}{currentRadio.country} · {currentRadio.codec}{currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}</span>
-                  ) : currentTv ? (
-                    <span className="truncate">{flag(currentTv.country)} {currentTv.categories.slice(0, 2).join(" · ") || "TV"}{currentTv.urls.length > 1 ? ` · mirror ${(playbackRef.current?.idx ?? 0) + 1}/${currentTv.urls.length}` : ""}</span>
-                  ) : null}
+                  {playError && <span className="text-destructive truncate">· {playError}</span>}
                 </div>
               </div>
             </div>
-
             <Button variant="ghost" size="icon" onClick={() => skipStation(-1)} className="shrink-0" aria-label="Previous">
               <SkipBack className="h-5 w-5" />
             </Button>
-
             <Button
               size="icon"
               onClick={togglePlay}
-              className="h-12 w-12 rounded-full shrink-0"
-              style={{ background: "var(--gradient-primary)", animation: playing ? "pulse-ring 1.6s infinite" : undefined }}
+              className="h-11 w-11 rounded-full shrink-0"
+              style={{ background: "var(--gradient-primary)" }}
             >
               {buffering ? <Loader2 className="h-5 w-5 animate-spin" /> : playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </Button>
-
             <Button variant="ghost" size="icon" onClick={() => skipStation(1)} className="shrink-0" aria-label="Next">
               <SkipForward className="h-5 w-5" />
             </Button>
-
-            <Button variant="ghost" size="icon" onClick={() => setBigPlayer((b) => !b)} className="shrink-0 hidden sm:inline-flex" aria-label="Expand">
-              {bigPlayer ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+            <Button variant="ghost" size="icon" onClick={() => setBigPlayer(true)} className="shrink-0" aria-label="Expand">
+              <ChevronUp className="h-5 w-5" />
             </Button>
-
-            <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="shrink-0 hidden sm:inline-flex" aria-label="Fullscreen">
-              <Maximize2 className="h-4 w-4" />
-            </Button>
-
-            <div className="hidden md:flex items-center gap-2 w-40">
-              <Button variant="ghost" size="icon" onClick={() => setMuted((m) => !m)}>
-                {muted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-              </Button>
-              <Slider value={[muted ? 0 : volume]} max={100} step={1} onValueChange={(v) => { setVolume(v[0]); setMuted(false); }} />
-            </div>
           </div>
         </div>
       )}
