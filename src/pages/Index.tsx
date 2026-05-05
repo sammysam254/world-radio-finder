@@ -371,14 +371,17 @@ const Index = () => {
     }
   };
 
-  const skipAfterThirtySeconds = (reason?: string) => {
+  const skipAfterTimeout = (reason?: string) => {
     const p = playbackRef.current;
     if (!p) return;
     clearPlaybackTimer();
     clearStationTimer();
     setPlaying(false);
     setBuffering(false);
-    setPlayError(`No playback after 30s${reason ? ` (${reason})` : ""}. Skipping…`);
+    // Mark this station as failed for reliability ranking
+    const id = currentRadio?.stationuuid || currentTv?.id;
+    if (id) recordFailure(id);
+    setPlayError(`Couldn't play after ${p.attempt} ${p.attempt === 1 ? "try" : "tries"}${reason ? ` (${reason})` : ""}. Skipping…`);
     window.setTimeout(() => skipStationRef.current?.(1), 250);
   };
 
@@ -397,26 +400,22 @@ const Index = () => {
     }
   };
 
+  // Each attempt gets up to 60s to start. If not playing by then, try the next mirror.
   const armReadinessCheck = (kind: "radio" | "tv") => {
     clearPlaybackTimer();
     const el = kind === "radio" ? audioRef.current : videoRef.current;
     if (!el || !playbackRef.current) return;
-    // Retry the next mirror before the 30s station/channel timeout expires.
     playbackRef.current.timer = window.setTimeout(() => {
       const isReady = el && !el.paused && el.readyState >= 2;
-      if (!isReady) tryNextSource("Stream not ready");
-    }, 10000);
+      if (!isReady) tryNextSource("60s no playback");
+    }, 60_000);
   };
 
-  const armStationTimeout = (kind: "radio" | "tv") => {
+  // After 5 attempts (DEAD_TRIES) without success across mirrors, give up and skip.
+  const armStationTimeout = (_kind: "radio" | "tv") => {
     clearStationTimer();
-    const startedAt = playbackRef.current?.startedAt ?? Date.now();
-    const remaining = Math.max(0, 30000 - (Date.now() - startedAt));
-    playbackRef.current!.stationTimer = window.setTimeout(() => {
-      const el = kind === "radio" ? audioRef.current : videoRef.current;
-      const isReady = el && !el.paused && el.readyState >= 2;
-      if (!isReady) skipAfterThirtySeconds("timeout");
-    }, remaining);
+    // No outer timer needed — armReadinessCheck enforces 60s per attempt,
+    // and tryNextSource enforces the 5-attempt cap below.
   };
 
   const tryNextSource = (reason?: string) => {
