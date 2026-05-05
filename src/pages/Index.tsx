@@ -570,13 +570,14 @@ const Index = () => {
   skipStationRef.current = skipStation;
 
   const toggleFullscreen = () => {
-    const el = playerWrapRef.current;
-    if (!el) return;
     if (document.fullscreenElement) {
       document.exitFullscreen?.();
-    } else {
-      el.requestFullscreen?.();
+      return;
     }
+    // Prefer the video element for TV so native controls/scaling kick in
+    const target: any = currentTv ? videoRef.current : playerWrapRef.current;
+    if (!target) return;
+    (target.requestFullscreen?.() || target.webkitEnterFullscreen?.());
   };
 
   const onPlayingSuccess = () => {
