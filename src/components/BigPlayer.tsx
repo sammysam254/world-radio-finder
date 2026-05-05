@@ -181,6 +181,7 @@ export default function BigPlayer({
           <div
             ref={tvSurfaceRef}
             className="absolute inset-0 flex items-center justify-center bg-black select-none touch-none"
+            style={{cursor:"pointer"}}
             onClick={showTvOverlay}
           >
             {videoEl}
