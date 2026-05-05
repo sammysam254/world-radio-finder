@@ -337,13 +337,20 @@ const Index = () => {
   const filteredStations = useMemo(() => {
     const cat = RADIO_CATEGORIES.find((c) => c.id === category);
     const q = search.toLowerCase();
-    return stations.filter((s) => {
+    const base = stations.filter((s) => {
       const hay = `${s.name} ${s.tags}`.toLowerCase();
       const matchSearch = !q || hay.includes(q);
       const matchCat = !cat || cat.tags.length === 0 || cat.tags.some((t) => hay.includes(t));
       return matchSearch && matchCat;
     });
-  }, [stations, search, category]);
+    const ranked = sortByReliability(base, (s) => s.stationuuid);
+    // Currently playing always first
+    if (currentRadio) {
+      const i = ranked.findIndex((s) => s.stationuuid === currentRadio.stationuuid);
+      if (i > 0) { const [cur] = ranked.splice(i, 1); ranked.unshift(cur); }
+    }
+    return ranked;
+  }, [stations, search, category, currentRadio?.stationuuid, playing]);
 
   const filteredTvCountries = useMemo(
     () => tvCountries.filter((c) => c.name.toLowerCase().includes(tvCountrySearch.toLowerCase())),
@@ -351,10 +358,16 @@ const Index = () => {
   );
   const filteredTvChannels = useMemo(() => {
     const q = tvSearch.toLowerCase();
-    return tvChannels.filter(
+    const base = tvChannels.filter(
       (c) => !q || c.name.toLowerCase().includes(q) || c.categories.join(" ").toLowerCase().includes(q)
     );
-  }, [tvChannels, tvSearch]);
+    const ranked = sortByReliability(base, (c) => c.id);
+    if (currentTv) {
+      const i = ranked.findIndex((c) => c.id === currentTv.id);
+      if (i > 0) { const [cur] = ranked.splice(i, 1); ranked.unshift(cur); }
+    }
+    return ranked;
+  }, [tvChannels, tvSearch, currentTv?.id, playing]);
 
   // ===== Playback with multi-URL fallback retry =====
   const clearPlaybackTimer = () => {
