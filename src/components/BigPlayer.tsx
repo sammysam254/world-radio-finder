@@ -123,7 +123,7 @@ export default function BigPlayer({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background overflow-hidden">
+    <div className="fixed z-50 flex flex-col bg-background overflow-hidden" style={{top:"36px",left:0,right:0,bottom:0}}>
 
       {/* ── Slim top bar — navigation only ── */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 glass shrink-0" style={{minHeight:48}}>
