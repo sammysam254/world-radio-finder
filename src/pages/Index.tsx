@@ -1059,14 +1059,15 @@ const Index = () => {
         </Tabs>
       </div>
 
-      {/* Persistent video element for TV (always mounted so ref is stable) */}
+      {/* Persistent video element for TV (always mounted so ref is stable).
+          Positioned to fill the BigPlayer's video surface area. */}
       <video
         ref={videoRef}
         playsInline
-        controls={bigPlayer && !!currentTv}
+        controls={false}
         className={
           currentTv && bigPlayer
-            ? "fixed z-40 left-0 right-0 top-0 bottom-[72px] w-full h-[calc(100vh-72px)] object-contain bg-black"
+            ? "fixed z-[55] left-0 right-0 top-[60px] bottom-[148px] w-full object-contain bg-black"
             : "hidden"
         }
         onPlaying={onPlayingSuccess}
@@ -1075,72 +1076,87 @@ const Index = () => {
         onError={() => tryNextSource("video error")}
       />
 
-      {/* Player */}
-      {(currentRadio || currentTv) && (
-        <div
-          ref={playerWrapRef}
-          className={`fixed z-50 transition-all ${
-            bigPlayer ? "inset-0 flex flex-col pointer-events-none" : "bottom-0 inset-x-0 glass border-t border-border/60"
-          }`}
-        >
-          {bigPlayer && (
-            <div className="flex-1 min-h-0 grid place-items-center relative pointer-events-none">
-              {!currentTv && (
-                <div className="text-center px-6">
-                  <div className="mx-auto h-56 w-56 sm:h-72 sm:w-72 rounded-3xl overflow-hidden grid place-items-center" style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-glow)" }}>
-                    {currentRadio?.favicon ? (
-                      <img src={currentRadio.favicon} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
-                    ) : (
-                      <Radio className="h-24 w-24 text-primary" />
-                    )}
-                  </div>
-                  <h3 className="mt-6 text-2xl font-black">{currentRadio?.name?.trim()}</h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {currentRadio?.countrycode ? flag(currentRadio.countrycode) + " " : ""}
-                    {currentRadio?.country} · {currentRadio?.codec}
-                    {currentRadio?.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}
-                  </p>
-                  {playing && (
-                    <div className="flex items-end justify-center h-8 mt-4 gap-0.5">
-                      {Array.from({ length: 18 }).map((_, i) => (
-                        <span key={i} className="equalizer-bar" style={{ animationDelay: `${i * 0.07}s` }} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {adActive && (
-                <div className="absolute inset-0 z-10 bg-black pointer-events-auto flex flex-col">
-                  <div className="flex-1 min-h-0 relative">
-                    <AdSlot />
-                  </div>
-                  <div className="flex items-center justify-between gap-3 px-4 py-3 bg-black/80 border-t border-border/60">
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Commercial break</div>
-                    <button
-                      disabled={adSkipIn > 0}
-                      onClick={closeAd}
-                      className="px-4 py-2 rounded-full text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{ background: "var(--gradient-primary)", color: "hsl(var(--primary-foreground))" }}
-                    >
-                      {adSkipIn > 0 ? `Skip in ${adSkipIn}s` : "Skip ad ▸"}
-                    </button>
-                  </div>
-                </div>
-              )}
-              <button
-                onClick={() => setBigPlayer(false)}
-                className="absolute top-4 right-4 h-10 w-10 rounded-full glass grid place-items-center pointer-events-auto z-20"
-                aria-label="Collapse player"
-              >
-                <ChevronDown className="h-5 w-5" />
-              </button>
+      {/* Big player overlay (Spotify-like for radio, YouTube-like for TV) */}
+      {(currentRadio || currentTv) && bigPlayer && (
+        <div ref={playerWrapRef} className="contents">
+          <BigPlayer
+            kind={currentTv ? "tv" : "radio"}
+            title={(currentRadio?.name || currentTv?.name || "").trim()}
+            subtitle={
+              currentRadio
+                ? `${currentRadio.countrycode ? flag(currentRadio.countrycode) + " " : ""}${currentRadio.country} · ${currentRadio.codec}${currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}`
+                : currentTv
+                ? `${flag(currentTv.country)} ${currentTv.categories.slice(0, 2).join(" · ") || "TV"}`
+                : undefined
+            }
+            artwork={currentRadio?.favicon || currentTv?.logo}
+            playing={playing}
+            buffering={buffering}
+            playError={playError}
+            netQuality={netQuality}
+            videoEl={null}
+            volume={volume}
+            muted={muted}
+            onVolumeChange={(v) => { setVolume(v); setMuted(false); }}
+            onMuteToggle={() => setMuted((m) => !m)}
+            onClose={() => setBigPlayer(false)}
+            onTogglePlay={togglePlay}
+            onSkip={skipStation}
+            onFullscreen={toggleFullscreen}
+            playlist={
+              currentTv
+                ? filteredTvChannels.map<PlaylistItem>((c) => ({
+                    id: c.id,
+                    name: c.name,
+                    subtitle: `${flag(c.country)} ${c.categories.slice(0, 2).join(" · ") || "TV"}`,
+                    logo: c.logo,
+                    dead: isDead(c.id),
+                  }))
+                : filteredStations.map<PlaylistItem>((s) => ({
+                    id: s.stationuuid,
+                    name: s.name.trim() || "Unknown",
+                    subtitle: `${s.countrycode ? flag(s.countrycode) + " " : ""}${s.country}${s.bitrate ? ` · ${s.bitrate}kbps` : ""}`,
+                    logo: s.favicon,
+                    dead: isDead(s.stationuuid),
+                  }))
+            }
+            currentId={currentTv?.id || currentRadio?.stationuuid || ""}
+            onSelect={(id) => {
+              if (currentTv) {
+                const ch = filteredTvChannels.find((c) => c.id === id);
+                if (ch) playTv(ch);
+              } else {
+                const s = filteredStations.find((x) => x.stationuuid === id);
+                if (s) playRadio(s);
+              }
+            }}
+          />
+          {adActive && (
+            <div className="fixed inset-0 z-[60] bg-black flex flex-col">
+              <div className="flex-1 min-h-0 relative"><AdSlot /></div>
+              <div className="flex items-center justify-between gap-3 px-4 py-3 bg-black/80 border-t border-border/60">
+                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Commercial break</div>
+                <button
+                  disabled={adSkipIn > 0}
+                  onClick={closeAd}
+                  className="px-4 py-2 rounded-full text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: "var(--gradient-primary)", color: "hsl(var(--primary-foreground))" }}
+                >
+                  {adSkipIn > 0 ? `Skip in ${adSkipIn}s` : "Skip ad ▸"}
+                </button>
+              </div>
             </div>
           )}
+        </div>
+      )}
 
-          <div className={`container py-4 flex items-center gap-2 sm:gap-4 ${bigPlayer ? "pointer-events-auto glass border-t border-border/60" : ""}`}>
+      {/* Compact mini-player (only when BigPlayer is collapsed) */}
+      {(currentRadio || currentTv) && !bigPlayer && (
+        <div className="fixed z-50 bottom-0 inset-x-0 glass border-t border-border/60">
+          <div className="container py-3 flex items-center gap-2 sm:gap-3">
             <div
               className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-              onClick={() => !bigPlayer && setBigPlayer(true)}
+              onClick={() => setBigPlayer(true)}
             >
               <div className="relative h-12 w-12 rounded-xl bg-secondary overflow-hidden shrink-0 grid place-items-center">
                 {currentRadio?.favicon ? (
@@ -1154,53 +1170,31 @@ const Index = () => {
                 )}
               </div>
               <div className="min-w-0">
-                <div className="font-semibold truncate">{(currentRadio?.name || currentTv?.name || "").trim()}</div>
+                <div className="font-semibold truncate text-sm">{(currentRadio?.name || currentTv?.name || "").trim()}</div>
                 <div className="text-xs text-muted-foreground truncate flex items-center gap-1">
                   {netQuality === "low" ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
                   <span className="uppercase tracking-wider">{netQuality}</span>
-                  <span>·</span>
-                  {playError ? (
-                    <span className="text-destructive truncate">{playError}</span>
-                  ) : currentRadio ? (
-                    <span className="truncate">{currentRadio.countrycode ? flag(currentRadio.countrycode) + " " : ""}{currentRadio.country} · {currentRadio.codec}{currentRadio.bitrate ? ` · ${currentRadio.bitrate}kbps` : ""}</span>
-                  ) : currentTv ? (
-                    <span className="truncate">{flag(currentTv.country)} {currentTv.categories.slice(0, 2).join(" · ") || "TV"}{currentTv.urls.length > 1 ? ` · mirror ${(playbackRef.current?.idx ?? 0) + 1}/${currentTv.urls.length}` : ""}</span>
-                  ) : null}
+                  {playError && <span className="text-destructive truncate">· {playError}</span>}
                 </div>
               </div>
             </div>
-
             <Button variant="ghost" size="icon" onClick={() => skipStation(-1)} className="shrink-0" aria-label="Previous">
               <SkipBack className="h-5 w-5" />
             </Button>
-
             <Button
               size="icon"
               onClick={togglePlay}
-              className="h-12 w-12 rounded-full shrink-0"
-              style={{ background: "var(--gradient-primary)", animation: playing ? "pulse-ring 1.6s infinite" : undefined }}
+              className="h-11 w-11 rounded-full shrink-0"
+              style={{ background: "var(--gradient-primary)" }}
             >
               {buffering ? <Loader2 className="h-5 w-5 animate-spin" /> : playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </Button>
-
             <Button variant="ghost" size="icon" onClick={() => skipStation(1)} className="shrink-0" aria-label="Next">
               <SkipForward className="h-5 w-5" />
             </Button>
-
-            <Button variant="ghost" size="icon" onClick={() => setBigPlayer((b) => !b)} className="shrink-0 hidden sm:inline-flex" aria-label="Expand">
-              {bigPlayer ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+            <Button variant="ghost" size="icon" onClick={() => setBigPlayer(true)} className="shrink-0" aria-label="Expand">
+              <ChevronUp className="h-5 w-5" />
             </Button>
-
-            <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="shrink-0 hidden sm:inline-flex" aria-label="Fullscreen">
-              <Maximize2 className="h-4 w-4" />
-            </Button>
-
-            <div className="hidden md:flex items-center gap-2 w-40">
-              <Button variant="ghost" size="icon" onClick={() => setMuted((m) => !m)}>
-                {muted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-              </Button>
-              <Slider value={[muted ? 0 : volume]} max={100} step={1} onValueChange={(v) => { setVolume(v[0]); setMuted(false); }} />
-            </div>
           </div>
         </div>
       )}
