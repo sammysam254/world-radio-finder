@@ -316,7 +316,22 @@ const Index = () => {
   const loadTvCountry = (c: TvCountry) => {
     setTvCountry(c);
     setTvCategory(null);
-    setTvChannels(tvAll.filter((ch) => ch.country === c.code));
+    let list = tvAll.filter((ch) => ch.country === c.code);
+    if (c.code === "KE") {
+      // Prepend Kenyan YouTube live channels
+      const ytItems: TvChannel[] = KENYA_YT_CHANNELS.map((k) => ({
+        id: `yt-${k.channelId}`,
+        name: k.name,
+        country: "KE",
+        categories: ["news", "general"],
+        logo: `https://yt3.googleusercontent.com/ytc/${k.channelId}=s120`,
+        urls: [`${YT_PREFIX}${k.channelId}`],
+      }));
+      // Remove dupes by name (lowercase) so we don't double-list e.g. NTV
+      const lower = new Set(ytItems.map((x) => x.name.toLowerCase()));
+      list = [...ytItems, ...list.filter((ch) => !lower.has(ch.name.toLowerCase()))];
+    }
+    setTvChannels(list);
     setTvSearch("");
   };
 
