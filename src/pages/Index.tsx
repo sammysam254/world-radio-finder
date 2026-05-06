@@ -11,8 +11,6 @@ import LiveViewers from "@/components/LiveViewers";
 import LiveStatsBar from "@/components/LiveStatsBar";
 import BigPlayer, { PlaylistItem } from "@/components/BigPlayer";
 import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead, getEntry, DEAD_TRIES } from "@/lib/reliability";
-import { KENYA_YT_CHANNELS, YT_PREFIX, isYouTubeStream, ytChannelIdFromUrl } from "@/lib/kenyaYouTube";
-
 
 type Country = { name: string; iso_3166_1: string; stationcount: number };
 type Station = {
@@ -122,7 +120,6 @@ const Index = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
-  const [ytVideoId, setYtVideoId] = useState<string | null>(null);
 
   // playback retry control
   const playbackRef = useRef<{
@@ -317,22 +314,7 @@ const Index = () => {
   const loadTvCountry = (c: TvCountry) => {
     setTvCountry(c);
     setTvCategory(null);
-    let list = tvAll.filter((ch) => ch.country === c.code);
-    if (c.code === "KE") {
-      // Prepend Kenyan YouTube live channels
-      const ytItems: TvChannel[] = KENYA_YT_CHANNELS.map((k) => ({
-        id: `yt-${k.channelId}`,
-        name: k.name,
-        country: "KE",
-        categories: ["news", "general"],
-        logo: `https://yt3.googleusercontent.com/ytc/${k.channelId}=s120`,
-        urls: [`${YT_PREFIX}${k.channelId}`],
-      }));
-      // Remove dupes by name (lowercase) so we don't double-list e.g. NTV
-      const lower = new Set(ytItems.map((x) => x.name.toLowerCase()));
-      list = [...ytItems, ...list.filter((ch) => !lower.has(ch.name.toLowerCase()))];
-    }
-    setTvChannels(list);
+    setTvChannels(tvAll.filter((ch) => ch.country === c.code));
     setTvSearch("");
   };
 
@@ -430,7 +412,6 @@ const Index = () => {
       videoRef.current.pause();
       videoRef.current.removeAttribute("src");
       videoRef.current.load();
-    setYtVideoId(null);
     }
   };
 
@@ -484,40 +465,6 @@ const Index = () => {
     const video = videoRef.current;
     if (!video) return;
     setBuffering(true);
-
-    // ===== YouTube live stream (Kenya channels) =====
-    if (isYouTubeStream(url)) {
-      const channelId = ytChannelIdFromUrl(url)!;
-      // Stop any HLS / video src
-      if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
-      try { video.pause(); video.removeAttribute("src"); video.load(); } catch {}
-      setYtVideoId(null);
-      (async () => {
-        try {
-          const url = `${(import.meta as any).env.VITE_SUPABASE_URL}/functions/v1/youtube-live?channelId=${channelId}`;
-          const r = await fetch(url, {
-            headers: {
-              apikey: (import.meta as any).env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
-              Authorization: `Bearer ${(import.meta as any).env.VITE_SUPABASE_PUBLISHABLE_KEY || ""}`,
-            },
-          });
-          const data = await r.json();
-          const vid: string | null = data?.videoId || null;
-          if (!vid) {
-            setPlayError("Channel is currently offline");
-            tryNextSource("youtube offline");
-            return;
-          }
-          setYtVideoId(vid);
-          onPlayingSuccess();
-        } catch (e) {
-          console.error(e);
-          tryNextSource("youtube error");
-        }
-      })();
-      return;
-    }
-    setYtVideoId(null);
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
@@ -672,23 +619,7 @@ const Index = () => {
       setBigPlayer(true);
       setAdSkipIn(20);
       adCountdownRef.current = window.setInterval(() => {
-        setAdSkipIn((s) => {
-          if (s <= 1) {
-            // Skip becomes available at 0; auto-skip 5s later if user hasn't clicked
-            if (s === 0) {
-              if (adCountdownRef.current) { clearInterval(adCountdownRef.current); adCountdownRef.current = null; }
-              window.setTimeout(() => {
-                // Only close if still showing the ad
-                setAdActive((active) => {
-                  if (active) closeAd();
-                  return active;
-                });
-              }, 5000);
-            }
-            return s > 0 ? s - 1 : 0;
-          }
-          return s - 1;
-        });
+        setAdSkipIn((s) => (s > 0 ? s - 1 : 0));
       }, 1000);
     }, 5 * 60 * 1000);
   };
@@ -714,59 +645,15 @@ const Index = () => {
 
   return (
     <div className="min-h-screen pb-40">
-      {/* Marquee banners */}
-      <div className="sticky top-0 z-[60] w-full border-b border-border/60" style={{ background: "var(--gradient-primary)" }}>
-
-        {/* Row 1: WAVEBOX oval badge + advertise scrolling text */}
-        <div style={{ display:"flex", alignItems:"center", borderBottom:"1px solid rgba(255,255,255,0.15)", overflow:"hidden" }}>
-          {/* Oval WAVEBOX badge — letters pop in one by one */}
-          <div style={{
-            flexShrink:0,
-            display:"flex",
-            alignItems:"center",
-            justifyContent:"center",
-            background:"rgba(0,0,0,0.28)",
-            border:"1.5px solid rgba(255,255,255,0.4)",
-            borderRadius:"999px",
-            padding:"3px 14px",
-            margin:"4px 12px",
-            gap:"1px",
-            whiteSpace:"nowrap"
-          }}>
-            {"WAVEBOX".split("").map((ch, i) => (
-              <span key={i} style={{
-                display:"inline-block",
-                fontSize:"11px",
-                fontWeight:800,
-                color:"#fff",
-                letterSpacing:"0.18em",
-                animation:`waveboxLetter 0.45s ${i * 0.09}s cubic-bezier(.34,1.56,.64,1) both`
-              }}>{ch}</span>
-            ))}
-          </div>
-          {/* Scrolling advertise text */}
-          <div style={{ flex:1, overflow:"hidden" }}>
-            <div className="marquee-track" style={{ whiteSpace:"nowrap", fontSize:"11px", fontWeight:600, color:"rgba(255,255,255,0.93)", padding:"5px 0" }}>
-              {[0,1].map(k => (
-                <span key={k} className="px-8">
-                  📢 Contact +254706499848 to advertise here &nbsp;·&nbsp; Reach thousands of radio &amp; TV listeners worldwide &nbsp;·&nbsp; Affordable ad packages available &nbsp;·&nbsp; Boost your brand on Wavebox &nbsp;·&nbsp; 📢 Contact +254706499848 to advertise here &nbsp;·&nbsp; Get your business in front of a global audience
-                </span>
-              ))}
-            </div>
-          </div>
+      {/* Developer marquee banner */}
+      <div className="sticky top-0 z-[60] w-full overflow-hidden border-b border-border/60" style={{ background: "var(--gradient-primary)" }}>
+        <div className="marquee-track py-1.5 text-xs sm:text-sm font-semibold text-primary-foreground">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <span key={i} className="px-8 inline-flex items-center gap-3">
+              This system is developed and is the property of Sam. Please call 0706499848 for Softwares, AI Tools, Websites, SEO Optimization, Mobile Apps and any other custom tool
+            </span>
+          ))}
         </div>
-
-        {/* Row 2: Developer info scrolling */}
-        <div style={{ overflow:"hidden" }}>
-          <div className="marquee-track" style={{ whiteSpace:"nowrap", fontSize:"11px", fontWeight:600, color:"rgba(255,255,255,0.88)", padding:"4px 0" }}>
-            {[0,1].map(k => (
-              <span key={k} className="px-8">
-                This system is developed and is the property of Sam. Please call 0706499848 for Softwares, AI Tools, Websites, SEO Optimization, Mobile Apps and any other custom tool
-              </span>
-            ))}
-          </div>
-        </div>
-
       </div>
       <LiveStatsBar />
       <audio
@@ -1183,7 +1070,7 @@ const Index = () => {
         playsInline
         controls={false}
         className={
-          currentTv && bigPlayer && !ytVideoId
+          currentTv && bigPlayer
             ? "fixed z-[55] left-0 right-0 top-[88px] bottom-[222px] w-full object-contain bg-black"
             : "hidden"
         }
@@ -1192,16 +1079,7 @@ const Index = () => {
         onWaiting={() => setBuffering(true)}
         onError={() => tryNextSource("video error")}
       />
-      {currentTv && bigPlayer && ytVideoId && (
-        <iframe
-          key={ytVideoId}
-          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&mute=1&playsinline=1&modestbranding=1&rel=0`}
-          className="fixed z-[55] left-0 right-0 top-[88px] bottom-[222px] w-full bg-black"
-          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-          allowFullScreen
-          title={currentTv.name}
-        />
-      )}
+
       {/* Big player overlay (Spotify-like for radio, YouTube-like for TV) */}
       {(currentRadio || currentTv) && bigPlayer && (
         <div ref={playerWrapRef} className="contents">
@@ -1259,7 +1137,7 @@ const Index = () => {
           />
           {adActive && (
             <div className="fixed inset-0 z-[60] bg-black flex flex-col">
-              <div className="flex-1 min-h-0 relative"><AdSlot onAdComplete={closeAd} /></div>
+              <div className="flex-1 min-h-0 relative"><AdSlot /></div>
               <div className="flex items-center justify-between gap-3 px-4 py-3 bg-black/80 border-t border-border/60">
                 <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Commercial break</div>
                 <button
@@ -1333,5 +1211,7 @@ const Index = () => {
       )}
     </div>
   );
-}
+};
+
+
 export default Index;
