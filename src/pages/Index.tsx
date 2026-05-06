@@ -494,27 +494,21 @@ const Index = () => {
       setYtVideoId(null);
       (async () => {
         try {
-          const { data, error } = await supabase.functions.invoke("youtube-live", {
-            body: null,
-            method: "GET",
-          } as any).catch(async () => {
-            // fallback: direct call to function URL with query params (invoke doesn't pass query easily)
-            const r = await fetch(
-              `https://hlgdmjlfvlnmxjynxqzd.supabase.co/functions/v1/youtube-live?channelId=${channelId}`,
-              { headers: { apikey: (import.meta as any).env.VITE_SUPABASE_PUBLISHABLE_KEY || "" } }
-            );
-            return { data: await r.json(), error: null } as any;
+          const url = `${(import.meta as any).env.VITE_SUPABASE_URL}/functions/v1/youtube-live?channelId=${channelId}`;
+          const r = await fetch(url, {
+            headers: {
+              apikey: (import.meta as any).env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
+              Authorization: `Bearer ${(import.meta as any).env.VITE_SUPABASE_PUBLISHABLE_KEY || ""}`,
+            },
           });
-          // Support both invoke and fallback shapes
-          const payload: any = (data && (data as any).videoId !== undefined) ? data : data;
-          const vid: string | null = payload?.videoId || null;
+          const data = await r.json();
+          const vid: string | null = data?.videoId || null;
           if (!vid) {
             setPlayError("Channel is currently offline");
             tryNextSource("youtube offline");
             return;
           }
           setYtVideoId(vid);
-          // Treat as success for reliability + cache
           onPlayingSuccess();
         } catch (e) {
           console.error(e);
