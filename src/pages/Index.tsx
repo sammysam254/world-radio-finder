@@ -122,6 +122,7 @@ const Index = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const [ytVideoId, setYtVideoId] = useState<string | null>(null);
 
   // playback retry control
   const playbackRef = useRef<{
