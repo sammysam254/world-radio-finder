@@ -7,7 +7,6 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Play, Pause, Search, Radio, Volume2, VolumeX, Globe2, Loader2, Tv, Newspaper, Trophy, Music2, Sparkles, Layers, MapPin, SkipBack, SkipForward, Maximize2, Minimize2, ChevronUp, ChevronDown, Wifi, WifiOff } from "lucide-react";
 import AdSlot from "@/components/AdSlot";
-import LiveViewers from "@/components/LiveViewers";
 import LiveStatsBar from "@/components/LiveStatsBar";
 import BigPlayer, { PlaylistItem } from "@/components/BigPlayer";
 import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead, getEntry, DEAD_TRIES } from "@/lib/reliability";
@@ -1176,12 +1175,7 @@ const Index = () => {
               <div className="min-w-0">
                 <div className="font-semibold truncate text-sm">{(currentRadio?.name || currentTv?.name || "").trim()}</div>
               <div className="mt-1">
-                <LiveViewers
-                  kind={currentTv ? "tv" : "radio"}
-                  stationId={currentTv?.id || currentRadio?.stationuuid || ""}
-                  stationName={(currentTv?.name || currentRadio?.name || "")}
-                />
-              </div>
+</div>
                 <div className="text-xs text-muted-foreground truncate flex items-center gap-1">
                   {netQuality === "low" ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
                   <span className="uppercase tracking-wider">{netQuality}</span>
