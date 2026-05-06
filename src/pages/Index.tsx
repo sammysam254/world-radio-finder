@@ -617,7 +617,7 @@ const Index = () => {
       videoRef.current?.pause();
       setAdActive(true);
       setBigPlayer(true);
-      setAdSkipIn(5);
+      setAdSkipIn(20);
       adCountdownRef.current = window.setInterval(() => {
         setAdSkipIn((s) => (s > 0 ? s - 1 : 0));
       }, 1000);
@@ -626,7 +626,7 @@ const Index = () => {
   const closeAd = () => {
     clearAdTimers();
     setAdActive(false);
-    setAdSkipIn(5);
+    setAdSkipIn(20);
     // Resume playback
     if (currentRadio) audioRef.current?.play().catch(() => {});
     else if (currentTv) videoRef.current?.play().catch(() => {});
@@ -1146,7 +1146,7 @@ const Index = () => {
                   className="px-4 py-2 rounded-full text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: "var(--gradient-primary)", color: "hsl(var(--primary-foreground))" }}
                 >
-                  {adSkipIn > 0 ? `Skip in ${adSkipIn}s` : "Skip ad ▸"}
+                  {adSkipIn > 0 ? `Skip in ${adSkipIn}s` : "Skip ▸"}
                 </button>
               </div>
             </div>
