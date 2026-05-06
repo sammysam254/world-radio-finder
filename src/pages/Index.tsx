@@ -111,7 +111,7 @@ const detectNetQuality = (): NetQuality => {
   return "high";
 };
 
-const Index = () => {
+export default const Index = () => {
   // shared player
   const [mode, setMode] = useState<"radio" | "tv">("radio");
   const [volume, setVolume] = useState(80);
