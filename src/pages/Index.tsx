@@ -11,6 +11,8 @@ import LiveViewers from "@/components/LiveViewers";
 import LiveStatsBar from "@/components/LiveStatsBar";
 import BigPlayer, { PlaylistItem } from "@/components/BigPlayer";
 import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead, getEntry, DEAD_TRIES } from "@/lib/reliability";
+import { KENYA_YT_CHANNELS, YT_PREFIX, isYouTubeStream, ytChannelIdFromUrl } from "@/lib/kenyaYouTube";
+
 
 type Country = { name: string; iso_3166_1: string; stationcount: number };
 type Station = {
@@ -120,6 +122,7 @@ const Index = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const [ytVideoId, setYtVideoId] = useState<string | null>(null);
 
   // playback retry control
   const playbackRef = useRef<{
@@ -314,7 +317,22 @@ const Index = () => {
   const loadTvCountry = (c: TvCountry) => {
     setTvCountry(c);
     setTvCategory(null);
-    setTvChannels(tvAll.filter((ch) => ch.country === c.code));
+    let list = tvAll.filter((ch) => ch.country === c.code);
+    if (c.code === "KE") {
+      // Prepend Kenyan YouTube live channels
+      const ytItems: TvChannel[] = KENYA_YT_CHANNELS.map((k) => ({
+        id: `yt-${k.channelId}`,
+        name: k.name,
+        country: "KE",
+        categories: ["news", "general"],
+        logo: `https://yt3.googleusercontent.com/ytc/${k.channelId}=s120`,
+        urls: [`${YT_PREFIX}${k.channelId}`],
+      }));
+      // Remove dupes by name (lowercase) so we don't double-list e.g. NTV
+      const lower = new Set(ytItems.map((x) => x.name.toLowerCase()));
+      list = [...ytItems, ...list.filter((ch) => !lower.has(ch.name.toLowerCase()))];
+    }
+    setTvChannels(list);
     setTvSearch("");
   };
 
@@ -412,6 +430,7 @@ const Index = () => {
       videoRef.current.pause();
       videoRef.current.removeAttribute("src");
       videoRef.current.load();
+    setYtVideoId(null);
     }
   };
 
@@ -465,6 +484,40 @@ const Index = () => {
     const video = videoRef.current;
     if (!video) return;
     setBuffering(true);
+
+    // ===== YouTube live stream (Kenya channels) =====
+    if (isYouTubeStream(url)) {
+      const channelId = ytChannelIdFromUrl(url)!;
+      // Stop any HLS / video src
+      if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
+      try { video.pause(); video.removeAttribute("src"); video.load(); } catch {}
+      setYtVideoId(null);
+      (async () => {
+        try {
+          const url = `${(import.meta as any).env.VITE_SUPABASE_URL}/functions/v1/youtube-live?channelId=${channelId}`;
+          const r = await fetch(url, {
+            headers: {
+              apikey: (import.meta as any).env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
+              Authorization: `Bearer ${(import.meta as any).env.VITE_SUPABASE_PUBLISHABLE_KEY || ""}`,
+            },
+          });
+          const data = await r.json();
+          const vid: string | null = data?.videoId || null;
+          if (!vid) {
+            setPlayError("Channel is currently offline");
+            tryNextSource("youtube offline");
+            return;
+          }
+          setYtVideoId(vid);
+          onPlayingSuccess();
+        } catch (e) {
+          console.error(e);
+          tryNextSource("youtube error");
+        }
+      })();
+      return;
+    }
+    setYtVideoId(null);
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
@@ -619,7 +672,23 @@ const Index = () => {
       setBigPlayer(true);
       setAdSkipIn(20);
       adCountdownRef.current = window.setInterval(() => {
-        setAdSkipIn((s) => (s > 0 ? s - 1 : 0));
+        setAdSkipIn((s) => {
+          if (s <= 1) {
+            // Skip becomes available at 0; auto-skip 5s later if user hasn't clicked
+            if (s === 0) {
+              if (adCountdownRef.current) { clearInterval(adCountdownRef.current); adCountdownRef.current = null; }
+              window.setTimeout(() => {
+                // Only close if still showing the ad
+                setAdActive((active) => {
+                  if (active) closeAd();
+                  return active;
+                });
+              }, 5000);
+            }
+            return s > 0 ? s - 1 : 0;
+          }
+          return s - 1;
+        });
       }, 1000);
     }, 5 * 60 * 1000);
   };
@@ -1070,7 +1139,7 @@ const Index = () => {
         playsInline
         controls={false}
         className={
-          currentTv && bigPlayer
+          currentTv && bigPlayer && !ytVideoId
             ? "fixed z-[55] left-0 right-0 top-[88px] bottom-[222px] w-full object-contain bg-black"
             : "hidden"
         }
@@ -1079,7 +1148,16 @@ const Index = () => {
         onWaiting={() => setBuffering(true)}
         onError={() => tryNextSource("video error")}
       />
-
+      {currentTv && bigPlayer && ytVideoId && (
+        <iframe
+          key={ytVideoId}
+          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&mute=1&playsinline=1&modestbranding=1&rel=0`}
+          className="fixed z-[55] left-0 right-0 top-[88px] bottom-[222px] w-full bg-black"
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+          allowFullScreen
+          title={currentTv.name}
+        />
+      )}
       {/* Big player overlay (Spotify-like for radio, YouTube-like for TV) */}
       {(currentRadio || currentTv) && bigPlayer && (
         <div ref={playerWrapRef} className="contents">
@@ -1137,7 +1215,7 @@ const Index = () => {
           />
           {adActive && (
             <div className="fixed inset-0 z-[60] bg-black flex flex-col">
-              <div className="flex-1 min-h-0 relative"><AdSlot /></div>
+              <div className="flex-1 min-h-0 relative"><AdSlot onAdComplete={closeAd} /></div>
               <div className="flex items-center justify-between gap-3 px-4 py-3 bg-black/80 border-t border-border/60">
                 <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Commercial break</div>
                 <button
