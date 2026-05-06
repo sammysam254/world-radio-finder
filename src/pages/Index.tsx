@@ -1158,7 +1158,7 @@ const Index = () => {
         controls={false}
         className={
           currentTv && bigPlayer && !ytVideoId
-            ? "fixed z-[55] left-0 right-0 top-[88px] bottom-[222px] w-full object-contain bg-black"
+            ? "fixed z-[55] left-0 right-0 top-[124px] bottom-[220px] w-full object-contain bg-black"
             : "hidden"
         }
         onPlaying={onPlayingSuccess}
