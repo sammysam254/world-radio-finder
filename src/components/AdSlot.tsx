@@ -255,16 +255,10 @@ export const AdSlot = ({ onAdComplete, onSkippable, skipAfter }: Props) => {
   }, [idx, loading, ads.length]);
 
   const next = () => {
-<<<<<<< HEAD
     if (!ads.length) { onAdComplete?.(); return; }
-    const nextIdx = idx + 1;
-    if (nextIdx >= ads.length) {
-      saveIdx(0);
-      onAdComplete?.();
-    } else {
-      saveIdx(nextIdx);
-      setIdx(nextIdx);
-    }
+    const nextIdx = (idx + 1) % ads.length;
+    saveIdx(nextIdx);
+    onAdComplete?.();
   };
 
   if (loading) return (
