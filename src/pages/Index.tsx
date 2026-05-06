@@ -483,6 +483,46 @@ const Index = () => {
     const video = videoRef.current;
     if (!video) return;
     setBuffering(true);
+
+    // ===== YouTube live stream (Kenya channels) =====
+    if (isYouTubeStream(url)) {
+      const channelId = ytChannelIdFromUrl(url)!;
+      // Stop any HLS / video src
+      if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
+      try { video.pause(); video.removeAttribute("src"); video.load(); } catch {}
+      setYtVideoId(null);
+      (async () => {
+        try {
+          const { data, error } = await supabase.functions.invoke("youtube-live", {
+            body: null,
+            method: "GET",
+          } as any).catch(async () => {
+            // fallback: direct call to function URL with query params (invoke doesn't pass query easily)
+            const r = await fetch(
+              `https://hlgdmjlfvlnmxjynxqzd.supabase.co/functions/v1/youtube-live?channelId=${channelId}`,
+              { headers: { apikey: (import.meta as any).env.VITE_SUPABASE_PUBLISHABLE_KEY || "" } }
+            );
+            return { data: await r.json(), error: null } as any;
+          });
+          // Support both invoke and fallback shapes
+          const payload: any = (data && (data as any).videoId !== undefined) ? data : data;
+          const vid: string | null = payload?.videoId || null;
+          if (!vid) {
+            setPlayError("Channel is currently offline");
+            tryNextSource("youtube offline");
+            return;
+          }
+          setYtVideoId(vid);
+          // Treat as success for reliability + cache
+          onPlayingSuccess();
+        } catch (e) {
+          console.error(e);
+          tryNextSource("youtube error");
+        }
+      })();
+      return;
+    }
+    setYtVideoId(null);
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
