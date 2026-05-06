@@ -678,7 +678,23 @@ const Index = () => {
       setBigPlayer(true);
       setAdSkipIn(5);
       adCountdownRef.current = window.setInterval(() => {
-        setAdSkipIn((s) => (s > 0 ? s - 1 : 0));
+        setAdSkipIn((s) => {
+          if (s <= 1) {
+            // Skip becomes available at 0; auto-skip 5s later if user hasn't clicked
+            if (s === 0) {
+              if (adCountdownRef.current) { clearInterval(adCountdownRef.current); adCountdownRef.current = null; }
+              window.setTimeout(() => {
+                // Only close if still showing the ad
+                setAdActive((active) => {
+                  if (active) closeAd();
+                  return active;
+                });
+              }, 5000);
+            }
+            return s > 0 ? s - 1 : 0;
+          }
+          return s - 1;
+        });
       }, 1000);
     }, 5 * 60 * 1000);
   };
