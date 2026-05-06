@@ -1332,12 +1332,8 @@ const Index = () => {
         </div>
       )}
     </div>
-
-      {/* Footer: Terms & Privacy */}
-      {!bigPlayer && (currentRadio || currentTv ? (
-        <div className="h-8" />
-      ) : null)}
-      <div className="flex items-center justify-center gap-3 py-2 text-[10px] text-muted-foreground border-t border-border/20 mt-4" style={{background:"hsl(240 14% 6% / 0.95)"}}>
+      {/* Footer */}
+      <div className="flex items-center justify-center gap-3 py-2 text-[10px] text-muted-foreground border-t border-border/20" style={{background:"hsl(240 14% 6% / 0.95)"}}>
         <a href="/terms" className="hover:text-primary transition-colors">Terms</a>
         <span>·</span>
         <a href="/privacy" className="hover:text-primary transition-colors">Privacy</a>
@@ -1346,5 +1342,6 @@ const Index = () => {
         <span>·</span>
         <a href="tel:+254706499848" className="hover:text-primary transition-colors">+254706499848</a>
       </div>
+
   );
 }
