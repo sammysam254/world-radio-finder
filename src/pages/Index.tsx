@@ -1205,7 +1205,7 @@ const Index = () => {
           />
           {adActive && (
             <div className="fixed inset-0 z-[60] bg-black flex flex-col">
-              <div className="flex-1 min-h-0 relative"><AdSlot /></div>
+              <div className="flex-1 min-h-0 relative"><AdSlot onAdComplete={closeAd} /></div>
               <div className="flex items-center justify-between gap-3 px-4 py-3 bg-black/80 border-t border-border/60">
                 <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Commercial break</div>
                 <button
