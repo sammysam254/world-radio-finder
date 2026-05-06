@@ -111,17 +111,7 @@ export const AdSlot = ({ onAdComplete, onSkippable }: Props) => {
     return <div className="w-full h-full bg-black grid place-items-center text-white/60 text-sm">Loading ad…</div>;
   }
   if (ads.length === 0) {
-    // No ads configured — show fallback and let parent skip
-    useEffect(() => { onSkippable?.(); const t = setTimeout(() => onAdComplete?.(), 5000); return () => clearTimeout(t); }, []);
-    return (
-      <div className="w-full h-full bg-black grid place-items-center text-center p-6 text-white">
-        <div>
-          <div className="opacity-60 text-xs uppercase tracking-[0.2em] mb-2">Advertisement</div>
-          <div className="font-semibold">No ads configured.</div>
-          <div className="opacity-60 text-xs mt-2">Admins can add ads at /admin</div>
-        </div>
-      </div>
-    );
+    return <NoAdsFallback onSkippable={onSkippable} onAdComplete={onAdComplete} />;
   }
 
   const ad = ads[idx];
