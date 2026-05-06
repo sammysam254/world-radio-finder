@@ -1331,17 +1331,15 @@ const Index = () => {
           </div>
         </div>
       )}
-    </div>
       {/* Footer */}
-      <div className="flex items-center justify-center gap-3 py-2 text-[10px] text-muted-foreground border-t border-border/20" style={{background:"hsl(240 14% 6% / 0.95)"}}>
-        <a href="/terms" className="hover:text-primary transition-colors">Terms</a>
-        <span>·</span>
-        <a href="/privacy" className="hover:text-primary transition-colors">Privacy</a>
-        <span>·</span>
+      <div className="flex items-center justify-center gap-3 flex-wrap py-2 text-[10px] text-muted-foreground border-t border-border/20" style={{background:"hsl(240 14% 6% / 0.95)"}}>
+        <a href="/terms" className="hover:text-primary transition-colors">Terms of Service</a>
+        <span className="text-border/60">·</span>
+        <a href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</a>
+        <span className="text-border/60">·</span>
         <span>© 2025 Wavebox · Sam</span>
-        <span>·</span>
+        <span className="text-border/60">·</span>
         <a href="tel:+254706499848" className="hover:text-primary transition-colors">+254706499848</a>
       </div>
-
-  );
+    </div>);
 }
