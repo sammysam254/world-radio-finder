@@ -430,6 +430,7 @@ const Index = () => {
       videoRef.current.pause();
       videoRef.current.removeAttribute("src");
       videoRef.current.load();
+    setYtVideoId(null);
     }
   };
 
