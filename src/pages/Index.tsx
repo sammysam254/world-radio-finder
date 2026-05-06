@@ -1129,7 +1129,7 @@ const Index = () => {
         playsInline
         controls={false}
         className={
-          currentTv && bigPlayer
+          currentTv && bigPlayer && !ytVideoId
             ? "fixed z-[55] left-0 right-0 top-[88px] bottom-[222px] w-full object-contain bg-black"
             : "hidden"
         }
@@ -1138,7 +1138,16 @@ const Index = () => {
         onWaiting={() => setBuffering(true)}
         onError={() => tryNextSource("video error")}
       />
-
+      {currentTv && bigPlayer && ytVideoId && (
+        <iframe
+          key={ytVideoId}
+          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&mute=1&playsinline=1&modestbranding=1&rel=0`}
+          className="fixed z-[55] left-0 right-0 top-[88px] bottom-[222px] w-full bg-black"
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+          allowFullScreen
+          title={currentTv.name}
+        />
+      )}
       {/* Big player overlay (Spotify-like for radio, YouTube-like for TV) */}
       {(currentRadio || currentTv) && bigPlayer && (
         <div ref={playerWrapRef} className="contents">
