@@ -714,15 +714,59 @@ const Index = () => {
 
   return (
     <div className="min-h-screen pb-40">
-      {/* Developer marquee banner */}
-      <div className="sticky top-0 z-[60] w-full overflow-hidden border-b border-border/60" style={{ background: "var(--gradient-primary)" }}>
-        <div className="marquee-track py-1.5 text-xs sm:text-sm font-semibold text-primary-foreground">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <span key={i} className="px-8 inline-flex items-center gap-3">
-              This system is developed and is the property of Sam. Please call 0706499848 for Softwares, AI Tools, Websites, SEO Optimization, Mobile Apps and any other custom tool
-            </span>
-          ))}
+      {/* Marquee banners */}
+      <div className="sticky top-0 z-[60] w-full border-b border-border/60" style={{ background: "var(--gradient-primary)" }}>
+
+        {/* Row 1: WAVEBOX oval badge + advertise scrolling text */}
+        <div style={{ display:"flex", alignItems:"center", borderBottom:"1px solid rgba(255,255,255,0.15)", overflow:"hidden" }}>
+          {/* Oval WAVEBOX badge — letters pop in one by one */}
+          <div style={{
+            flexShrink:0,
+            display:"flex",
+            alignItems:"center",
+            justifyContent:"center",
+            background:"rgba(0,0,0,0.28)",
+            border:"1.5px solid rgba(255,255,255,0.4)",
+            borderRadius:"999px",
+            padding:"3px 14px",
+            margin:"4px 12px",
+            gap:"1px",
+            whiteSpace:"nowrap"
+          }}>
+            {"WAVEBOX".split("").map((ch, i) => (
+              <span key={i} style={{
+                display:"inline-block",
+                fontSize:"11px",
+                fontWeight:800,
+                color:"#fff",
+                letterSpacing:"0.18em",
+                animation:`waveboxLetter 0.45s ${i * 0.09}s cubic-bezier(.34,1.56,.64,1) both`
+              }}>{ch}</span>
+            ))}
+          </div>
+          {/* Scrolling advertise text */}
+          <div style={{ flex:1, overflow:"hidden" }}>
+            <div className="marquee-track" style={{ whiteSpace:"nowrap", fontSize:"11px", fontWeight:600, color:"rgba(255,255,255,0.93)", padding:"5px 0" }}>
+              {[0,1].map(k => (
+                <span key={k} className="px-8">
+                  📢 Contact +254706499848 to advertise here &nbsp;·&nbsp; Reach thousands of radio &amp; TV listeners worldwide &nbsp;·&nbsp; Affordable ad packages available &nbsp;·&nbsp; Boost your brand on Wavebox &nbsp;·&nbsp; 📢 Contact +254706499848 to advertise here &nbsp;·&nbsp; Get your business in front of a global audience
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
+
+        {/* Row 2: Developer info scrolling */}
+        <div style={{ overflow:"hidden" }}>
+          <div className="marquee-track" style={{ whiteSpace:"nowrap", fontSize:"11px", fontWeight:600, color:"rgba(255,255,255,0.88)", padding:"4px 0" }}>
+            {[0,1].map(k => (
+              <span key={k} className="px-8">
+                This system is developed and is the property of Sam. Please call 0706499848 for Softwares, AI Tools, Websites, SEO Optimization, Mobile Apps and any other custom tool
+              </span>
+            ))}
+          </div>
+        </div>
+
       </div>
       <LiveStatsBar />
       <audio
@@ -1288,8 +1332,19 @@ const Index = () => {
         </div>
       )}
     </div>
+
+      {/* Footer: Terms & Privacy */}
+      {!bigPlayer && (currentRadio || currentTv ? (
+        <div className="h-8" />
+      ) : null)}
+      <div className="flex items-center justify-center gap-3 py-2 text-[10px] text-muted-foreground border-t border-border/20 mt-4" style={{background:"hsl(240 14% 6% / 0.95)"}}>
+        <a href="/terms" className="hover:text-primary transition-colors">Terms</a>
+        <span>·</span>
+        <a href="/privacy" className="hover:text-primary transition-colors">Privacy</a>
+        <span>·</span>
+        <span>© 2025 Wavebox · Sam</span>
+        <span>·</span>
+        <a href="tel:+254706499848" className="hover:text-primary transition-colors">+254706499848</a>
+      </div>
   );
-};
-
-
-export default Index;
+}
