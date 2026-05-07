@@ -44,10 +44,17 @@ export const AdSlot = ({ onAdComplete, onSkippable }: Props) => {
   // Load + preload
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("ads")
-        .select("*").eq("active", true).order("sequence", { ascending: true });
-      const list = (data || []) as Ad[];
+      const [adminRes, advRes] = await Promise.all([
+        supabase.from("ads").select("*").eq("active", true).order("sequence", { ascending: true }),
+        supabase.from("advertiser_ads").select("id,kind,title,payload").eq("status", "approved"),
+      ]);
+      const adminAds = ((adminRes.data || []) as any[]).map((a) => ({
+        id: a.id, kind: a.kind, title: a.title, payload: a.payload, sequence: a.sequence ?? 0,
+      })) as Ad[];
+      const advAds = ((advRes.data || []) as any[]).map((a, i) => ({
+        id: a.id, kind: a.kind, title: a.title, payload: a.payload, sequence: 1000 + i,
+      })) as Ad[];
+      const list = [...adminAds, ...advAds];
       setAds(list);
       const start = list.length ? loadIdx() % list.length : 0;
       setIdx(start);

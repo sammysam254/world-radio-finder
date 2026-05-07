@@ -30,8 +30,11 @@ const Wallet = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { nav("/auth", { replace: true }); return; }
       setUid(session.user.id);
-      // ensure wallet row exists
-      await supabase.from("wallets").upsert({ user_id: session.user.id, balance_cents: 0 }, { onConflict: "user_id" });
+      // ensure wallet row exists (do NOT reset balance if it already exists)
+      const { data: existing } = await supabase.from("wallets").select("user_id").eq("user_id", session.user.id).maybeSingle();
+      if (!existing) {
+        await supabase.from("wallets").insert({ user_id: session.user.id, balance_cents: 0 });
+      }
       load(session.user.id);
     })();
   }, [nav]);
