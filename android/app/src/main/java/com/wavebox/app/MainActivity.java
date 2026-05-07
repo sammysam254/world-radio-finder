@@ -49,7 +49,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean firstLoad = true;
     private Handler handler = new Handler(Looper.getMainLooper());
     private BroadcastReceiver controlReceiver;
-    private static final String APP_URL = "https://internetfm.netlify.app";
+    private static final String APP_URL = "https://wavebox.site";
 
     @SuppressLint({"SetJavaScriptEnabled","AddJavascriptInterface"})
     @Override
