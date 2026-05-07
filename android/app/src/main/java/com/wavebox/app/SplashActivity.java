@@ -36,7 +36,6 @@ public class SplashActivity extends AppCompatActivity {
 
     private final ActivityResultLauncher<String[]> permissionLauncher =
         registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
-            // Whether granted or denied, proceed to main app
             goToMain();
         });
 
@@ -110,7 +109,7 @@ public class SplashActivity extends AppCompatActivity {
                     AnimatorSet ts = new AnimatorSet();
                     ts.playTogether(ta, ty);
                     ts.start();
-                    // After animation, request permissions then go to main
+                    // Request permissions after animation
                     handler.postDelayed(() -> requestAppPermissions(), 800);
                 });
             }
@@ -127,6 +126,35 @@ public class SplashActivity extends AppCompatActivity {
                     Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) {
                 needed.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+        }
+
+        // Media/Storage permissions for ad uploads
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Android 13+ uses granular media permissions
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.READ_MEDIA_IMAGES)
+                    != PackageManager.PERMISSION_GRANTED) {
+                needed.add(Manifest.permission.READ_MEDIA_IMAGES);
+            }
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.READ_MEDIA_VIDEO)
+                    != PackageManager.PERMISSION_GRANTED) {
+                needed.add(Manifest.permission.READ_MEDIA_VIDEO);
+            }
+        } else {
+            // Android 12 and below
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                needed.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+            }
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                if (ContextCompat.checkSelfPermission(this,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    needed.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+                }
             }
         }
 
