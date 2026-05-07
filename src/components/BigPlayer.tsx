@@ -16,9 +16,11 @@ import {
   Wifi,
   WifiOff,
   X,
+  MessageCircle,
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import LiveChat from "./LiveChat";
 
 export type PlaylistItem = {
   id: string;
@@ -49,14 +51,18 @@ type Props = {
   playlist: PlaylistItem[];
   currentId: string;
   onSelect: (id: string) => void;
+  channelKind?: "radio" | "tv";
+  channelId?: string;
 };
 
 export default function BigPlayer({
   kind, title, subtitle, artwork, playing, buffering, playError,
   netQuality, videoEl, volume, muted, onVolumeChange, onMuteToggle,
   onClose, onTogglePlay, onSkip, onFullscreen, playlist, currentId, onSelect,
+  channelKind, channelId,
 }: Props) {
   const [listOpen, setListOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [tvOverlay, setTvOverlay] = useState(false);
   const [hudVolume, setHudVolume] = useState<number | null>(null);
