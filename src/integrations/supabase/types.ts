@@ -121,6 +121,36 @@ export type Database = {
         }
         Relationships: []
       }
+      channel_comments: {
+        Row: {
+          body: string
+          channel_id: string
+          channel_kind: string
+          created_at: string
+          display_name: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          channel_id: string
+          channel_kind: string
+          created_at?: string
+          display_name: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          channel_id?: string
+          channel_kind?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       listener_sessions: {
         Row: {
           city: string | null
