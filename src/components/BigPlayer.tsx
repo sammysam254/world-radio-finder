@@ -399,6 +399,15 @@ export default function BigPlayer({
             onValueChange={v => onVolumeChange(v[0])}
             className="flex-1"
           />
+          {channelId && channelKind && (
+            <button
+              onClick={() => setChatOpen(true)}
+              aria-label="Open live chat"
+              className="shrink-0 h-9 w-9 rounded-full grid place-items-center border border-border/60 hover:border-primary hover:text-primary transition-colors"
+            >
+              <MessageCircle className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
     </div>
