@@ -24,6 +24,7 @@ import android.view.animation.ScaleAnimation;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -49,6 +50,11 @@ public class MainActivity extends AppCompatActivity {
     private boolean firstLoad = true;
     private Handler handler = new Handler(Looper.getMainLooper());
     private BroadcastReceiver controlReceiver;
+
+    // File upload support
+    private ValueCallback<Uri[]> fileUploadCallback;
+    private static final int FILE_CHOOSER_REQUEST = 100;
+
     private static final String APP_URL = "https://wavebox.site";
 
     @SuppressLint({"SetJavaScriptEnabled","AddJavascriptInterface"})
@@ -85,52 +91,14 @@ public class MainActivity extends AppCompatActivity {
                 if (action == null) return;
                 switch (action) {
                     case "next":
-                        webView.evaluateJavascript(
-                            "(function(){" +
-                            "var all=document.querySelectorAll('button,div,span,a');" +
-                            "for(var i=0;i<all.length;i++){" +
-                            "  var el=all[i];" +
-                            "  var label=(el.getAttribute('aria-label')||'')+(el.innerText||'')+(el.className||'');" +
-                            "  label=label.toLowerCase();" +
-                            "  if(label.includes('next')||label.includes('forward')||label.includes('skip')){" +
-                            "    el.click();break;" +
-                            "  }" +
-                            "}" +
-                            "})();", null);
+                        webView.evaluateJavascript("(function(){var b=document.querySelectorAll('button');for(var i=0;i<b.length;i++){var t=b[i].innerText+b[i].getAttribute('aria-label');if(t&&(t.toLowerCase().includes('next')||t.includes('>')||t.includes('›'))){b[i].click();break;}}})();", null);
                         break;
                     case "prev":
-                        webView.evaluateJavascript(
-                            "(function(){" +
-                            "var all=document.querySelectorAll('button,div,span,a');" +
-                            "for(var i=0;i<all.length;i++){" +
-                            "  var el=all[i];" +
-                            "  var label=(el.getAttribute('aria-label')||'')+(el.innerText||'')+(el.className||'');" +
-                            "  label=label.toLowerCase();" +
-                            "  if(label.includes('prev')||label.includes('back')||label.includes('previous')){" +
-                            "    el.click();break;" +
-                            "  }" +
-                            "}" +
-                            "})();", null);
+                        webView.evaluateJavascript("(function(){var b=document.querySelectorAll('button');for(var i=0;i<b.length;i++){var t=b[i].innerText+b[i].getAttribute('aria-label');if(t&&(t.toLowerCase().includes('prev')||t.includes('<')||t.includes('‹'))){b[i].click();break;}}})();", null);
                         break;
                     case "play":
                     case "pause":
-                        webView.evaluateJavascript(
-                            "(function(){" +
-                            "var media=document.querySelectorAll('audio,video');" +
-                            "if(media.length>0){" +
-                            "  if(media[0].paused){media[0].play();}" +
-                            "  else{media[0].pause();}" +
-                            "  return;" +
-                            "}" +
-                            "var all=document.querySelectorAll('button,div,span');" +
-                            "for(var i=0;i<all.length;i++){" +
-                            "  var label=(all[i].getAttribute('aria-label')||'')+(all[i].innerText||'');" +
-                            "  label=label.toLowerCase();" +
-                            "  if(label.includes('play')||label.includes('pause')||label.includes('stop')){" +
-                            "    all[i].click();break;" +
-                            "  }" +
-                            "}" +
-                            "})();", null);
+                        webView.evaluateJavascript("(function(){var a=document.querySelectorAll('audio,video');if(a.length>0){if(a[0].paused)a[0].play();else a[0].pause();}})();", null);
                         break;
                 }
             }
@@ -173,7 +141,6 @@ public class MainActivity extends AppCompatActivity {
             public void onAnimationRepeat(Animation a){}
             public void onAnimationEnd(Animation a){
                 loadingOverlay.setVisibility(View.GONE);
-                // Start service only after page loaded so audio context is alive
                 Intent si=new Intent(MainActivity.this,RadioService.class);
                 if (Build.VERSION.SDK_INT>=Build.VERSION_CODES.O)
                     startForegroundService(si);
@@ -208,6 +175,7 @@ public class MainActivity extends AppCompatActivity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setAllowFileAccess(true);
+        s.setAllowContentAccess(true);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         s.setDatabaseEnabled(true);
         s.setLoadWithOverviewMode(true);
@@ -252,6 +220,26 @@ public class MainActivity extends AppCompatActivity {
         });
 
         webView.setWebChromeClient(new WebChromeClient(){
+
+            // ── File upload support for admin/advertiser ad uploads ──
+            @Override
+            public boolean onShowFileChooser(WebView webView,
+                    ValueCallback<Uri[]> filePathCallback,
+                    FileChooserParams fileChooserParams) {
+                if (fileUploadCallback != null) {
+                    fileUploadCallback.onReceiveValue(null);
+                }
+                fileUploadCallback = filePathCallback;
+                Intent intent = fileChooserParams.createIntent();
+                try {
+                    startActivityForResult(intent, FILE_CHOOSER_REQUEST);
+                } catch (Exception e) {
+                    fileUploadCallback = null;
+                    return false;
+                }
+                return true;
+            }
+
             @Override
             public void onShowCustomView(View view,CustomViewCallback cb){
                 if (customView!=null){cb.onCustomViewHidden();return;}
@@ -281,6 +269,23 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == FILE_CHOOSER_REQUEST) {
+            if (fileUploadCallback == null) return;
+            Uri[] results = null;
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                String dataString = data.getDataString();
+                if (dataString != null) {
+                    results = new Uri[]{Uri.parse(dataString)};
+                }
+            }
+            fileUploadCallback.onReceiveValue(results);
+            fileUploadCallback = null;
+        }
+    }
+
     private void injectCSS(WebView v){
         v.loadUrl("javascript:(function(){var s=document.createElement('style');s.textContent='*{-webkit-tap-highlight-color:transparent;}html,body{padding-top:0!important;margin-top:0!important;}body>div:first-child{padding-bottom:90px!important;}::-webkit-scrollbar{display:none;}';document.head.appendChild(s);})();");
     }
@@ -300,9 +305,8 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode,e);
     }
 
-    // Keep WebView audio alive when minimized - do NOT pause it
     @Override protected void onResume(){super.onResume();webView.onResume();webView.resumeTimers();}
-    @Override protected void onPause(){super.onPause();} // intentionally NOT pausing webview
+    @Override protected void onPause(){super.onPause();}
     @Override protected void onSaveInstanceState(Bundle o){super.onSaveInstanceState(o);webView.saveState(o);}
 
     @Override
