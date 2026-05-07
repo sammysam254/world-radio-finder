@@ -781,9 +781,14 @@ const Index = () => {
             <p className="text-xs text-muted-foreground">Free radio & TV · worldwide</p>
           </div>
         </div>
-        <a href="https://www.radio-browser.info" target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-          Powered by Radio-Browser & IPTV-Org
-        </a>
+        <div className="flex items-center gap-2">
+          <Link to="/advertise" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted transition-colors">
+            <Megaphone className="h-3.5 w-3.5" /> Advertise
+          </Link>
+          <Link to="/profile" aria-label="Profile" className="h-9 w-9 rounded-full grid place-items-center border border-border hover:bg-muted transition-colors">
+            <UserIcon className="h-4 w-4" />
+          </Link>
+        </div>
       </header>
 
       <div className="container">
