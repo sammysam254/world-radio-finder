@@ -201,7 +201,7 @@ const Index = () => {
     })();
   }, []);
 
-
+  const fetchWithFallback = async (path: string) => {
     let lastErr: unknown;
     for (const base of API_BASES) {
       try {
