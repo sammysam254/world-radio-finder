@@ -1204,6 +1204,8 @@ const Index = () => {
         <div ref={playerWrapRef} className="contents">
           <BigPlayer
             kind={currentTv ? "tv" : "radio"}
+            channelKind={currentTv ? "tv" : "radio"}
+            channelId={currentTv?.id || currentRadio?.stationuuid}
             title={(currentRadio?.name || currentTv?.name || "").trim()}
             subtitle={
               currentRadio
