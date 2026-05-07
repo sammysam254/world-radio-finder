@@ -16,9 +16,11 @@ import {
   Wifi,
   WifiOff,
   X,
+  MessageCircle,
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import LiveChat from "./LiveChat";
 
 export type PlaylistItem = {
   id: string;
@@ -49,14 +51,18 @@ type Props = {
   playlist: PlaylistItem[];
   currentId: string;
   onSelect: (id: string) => void;
+  channelKind?: "radio" | "tv";
+  channelId?: string;
 };
 
 export default function BigPlayer({
   kind, title, subtitle, artwork, playing, buffering, playError,
   netQuality, videoEl, volume, muted, onVolumeChange, onMuteToggle,
   onClose, onTogglePlay, onSkip, onFullscreen, playlist, currentId, onSelect,
+  channelKind, channelId,
 }: Props) {
   const [listOpen, setListOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [tvOverlay, setTvOverlay] = useState(false);
   const [hudVolume, setHudVolume] = useState<number | null>(null);
@@ -314,6 +320,19 @@ export default function BigPlayer({
             </div>
           </div>
         )}
+        {/* ── Live chat overlay ── */}
+        {chatOpen && channelId && channelKind && (
+          <div className="absolute inset-0 z-30 bg-background/97 backdrop-blur-xl flex flex-col">
+            <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-border/60 shrink-0">
+              <MessageCircle className="h-4 w-4" />
+              <div className="text-sm font-semibold">Live chat</div>
+              <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setChatOpen(false)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <LiveChat channelKind={channelKind} channelId={channelId} className="flex-1 min-h-0" />
+          </div>
+        )}
       </div>
 
       {/* ══ BOTTOM CONTROLS — always visible for both radio and TV ══ */}
@@ -380,6 +399,15 @@ export default function BigPlayer({
             onValueChange={v => onVolumeChange(v[0])}
             className="flex-1"
           />
+          {channelId && channelKind && (
+            <button
+              onClick={() => setChatOpen(true)}
+              aria-label="Open live chat"
+              className="shrink-0 h-9 w-9 rounded-full grid place-items-center border border-border/60 hover:border-primary hover:text-primary transition-colors"
+            >
+              <MessageCircle className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
     </div>

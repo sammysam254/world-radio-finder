@@ -14,6 +14,35 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_impressions: {
+        Row: {
+          ad_id: string
+          count: number
+          date: string
+          id: string
+        }
+        Insert: {
+          ad_id: string
+          count?: number
+          date?: string
+          id?: string
+        }
+        Update: {
+          ad_id?: string
+          count?: number
+          date?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_impressions_ad_id_fkey"
+            columns: ["ad_id"]
+            isOneToOne: false
+            referencedRelation: "advertiser_ads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ads: {
         Row: {
           active: boolean
@@ -46,6 +75,150 @@ export type Database = {
           payload?: string
           sequence?: number
           title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      advertiser_ads: {
+        Row: {
+          cost_per_impression_cents: number
+          created_at: string
+          daily_impressions: number
+          id: string
+          kind: string
+          payload: string
+          rejection_reason: string | null
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cost_per_impression_cents?: number
+          created_at?: string
+          daily_impressions?: number
+          id?: string
+          kind: string
+          payload: string
+          rejection_reason?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cost_per_impression_cents?: number
+          created_at?: string
+          daily_impressions?: number
+          id?: string
+          kind?: string
+          payload?: string
+          rejection_reason?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      channel_comments: {
+        Row: {
+          body: string
+          channel_id: string
+          channel_kind: string
+          created_at: string
+          display_name: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          channel_id: string
+          channel_kind: string
+          created_at?: string
+          display_name: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          channel_id?: string
+          channel_kind?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      listener_sessions: {
+        Row: {
+          city: string | null
+          country: string | null
+          id: string
+          ip: string | null
+          last_seen_at: string
+          region: string | null
+          seconds_total: number
+          session_key: string
+          started_at: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          city?: string | null
+          country?: string | null
+          id?: string
+          ip?: string | null
+          last_seen_at?: string
+          region?: string | null
+          seconds_total?: number
+          session_key: string
+          started_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          city?: string | null
+          country?: string | null
+          id?: string
+          ip?: string | null
+          last_seen_at?: string
+          region?: string | null
+          seconds_total?: number
+          session_key?: string
+          started_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      marquee_texts: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          position: string
+          sequence: number
+          text: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          position?: string
+          sequence?: number
+          text: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          position?: string
+          sequence?: number
+          text?: string
           updated_at?: string
         }
         Relationships: []
@@ -98,11 +271,69 @@ export type Database = {
         }
         Relationships: []
       }
+      wallet_transactions: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          id: string
+          kind: string
+          note: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          id?: string
+          kind: string
+          note?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          id?: string
+          kind?: string
+          note?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      wallets: {
+        Row: {
+          balance_cents: number
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance_cents?: number
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance_cents?: number
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      adjust_wallet: {
+        Args: { _delta_cents: number; _user_id: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

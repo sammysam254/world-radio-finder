@@ -10,109 +10,113 @@ type Ad = {
 };
 
 const PROGRESS_KEY = "wavebox.adProgress.v1";
-const loadIdx = () => {
-  try { return parseInt(localStorage.getItem(PROGRESS_KEY) || "0", 10) || 0; } catch { return 0; }
-};
+const loadIdx = () => { try { return parseInt(localStorage.getItem(PROGRESS_KEY) || "0", 10) || 0; } catch { return 0; } };
 const saveIdx = (i: number) => { try { localStorage.setItem(PROGRESS_KEY, String(i)); } catch {} };
 
 const isYouTube = (u: string) => /youtu\.?be/.test(u);
 const ytEmbed = (u: string) => {
   const m = u.match(/(?:v=|youtu\.be\/|embed\/)([\w-]{11})/);
-  return m ? `https://www.youtube.com/embed/${m[1]}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1` : u;
+  return m ? `https://www.youtube.com/embed/${m[1]}?autoplay=1&controls=0&modestbranding=1&playsinline=1&rel=0` : u;
 };
 
 interface Props {
-  /** Called when an ad is fully done so the parent can close the break and resume. */
   onAdComplete?: () => void;
-  /** Called the moment the user has watched at least 5 seconds (parent enables Skip). */
   onSkippable?: () => void;
 }
 
 /**
- * AdSlot — plays admin-managed ads in sequence.
- * - video_file / video_url: rendered in <video> or YouTube iframe
- * - monetag_url: opened in a new tab; player keeps a placeholder for 8s, then continues
- * - After 5 seconds without interaction, auto-advances to next ad
- * - When the whole sequence completes, calls onAdComplete()
+ * AdSlot:
+ * - Loads all ads up front and pre-fetches video files (link rel=preload) for instant start.
+ * - Plays video with sound (unmuted).
+ * - Renders Monetag links INSIDE an iframe (no new tab) — auto-skips after 20s.
+ * - URL ads (any non-completing) auto-skip after 20s; videos that finish early advance via onEnded.
+ * - Skip becomes available after 5s.
  */
 export const AdSlot = ({ onAdComplete, onSkippable }: Props) => {
   const [ads, setAds] = useState<Ad[]>([]);
   const [idx, setIdx] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-  const [secsShown, setSecsShown] = useState(0);
   const tickRef = useRef<number | null>(null);
+  const skipRef = useRef<number | null>(null);
   const advanceRef = useRef<number | null>(null);
-  const monetagFiredRef = useRef(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
+  // Load + preload
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("ads")
-        .select("*")
-        .eq("active", true)
-        .order("sequence", { ascending: true });
-      const list = (data || []) as Ad[];
+      const [adminRes, advRes] = await Promise.all([
+        supabase.from("ads").select("*").eq("active", true).order("sequence", { ascending: true }),
+        supabase.from("advertiser_ads").select("id,kind,title,payload").eq("status", "approved"),
+      ]);
+      const adminAds = ((adminRes.data || []) as any[]).map((a) => ({
+        id: a.id, kind: a.kind, title: a.title, payload: a.payload, sequence: a.sequence ?? 0,
+      })) as Ad[];
+      const advAds = ((advRes.data || []) as any[]).map((a, i) => ({
+        id: a.id, kind: a.kind, title: a.title, payload: a.payload, sequence: 1000 + i,
+      })) as Ad[];
+      const list = [...adminAds, ...advAds];
       setAds(list);
       const start = list.length ? loadIdx() % list.length : 0;
       setIdx(start);
       setLoading(false);
+
+      // Preload all direct video URLs/files
+      list.forEach((a) => {
+        if ((a.kind === "video_url" && !isYouTube(a.payload)) || a.kind === "video_file") {
+          const link = document.createElement("link");
+          link.rel = "preload";
+          link.as = "video";
+          link.href = a.payload;
+          document.head.appendChild(link);
+        }
+      });
     })();
   }, []);
 
-  // Per-ad: tick seconds, fire skippable@5s, auto-advance@8s if no interaction
+  const clearTimers = () => {
+    if (tickRef.current) window.clearTimeout(tickRef.current);
+    if (skipRef.current) window.clearTimeout(skipRef.current);
+    if (advanceRef.current) window.clearTimeout(advanceRef.current);
+  };
+
   useEffect(() => {
     if (loading || ads.length === 0) return;
-    setSecsShown(0);
-    monetagFiredRef.current = false;
-    if (tickRef.current) window.clearInterval(tickRef.current);
-    if (advanceRef.current) window.clearTimeout(advanceRef.current);
-
-    tickRef.current = window.setInterval(() => {
-      setSecsShown((s) => {
-        const n = s + 1;
-        if (n === 5) onSkippable?.();
-        return n;
-      });
-    }, 1000);
-
-    // Auto-advance per ad after 8s (videos that finish earlier will advance via onEnded)
-    advanceRef.current = window.setTimeout(() => next(), 8000);
-
-    // Monetag: open in new tab once
+    clearTimers();
+    // Skippable after 5s
+    skipRef.current = window.setTimeout(() => onSkippable?.(), 5000) as unknown as number;
+    // For URL/iframe ads, auto-skip after 20s. Direct video files advance via onEnded; we still cap at 60s.
     const ad = ads[idx];
-    if (ad?.kind === "monetag_url" && !monetagFiredRef.current) {
-      monetagFiredRef.current = true;
-      try { window.open(ad.payload, "_blank", "noopener,noreferrer"); } catch {}
-    }
+    const cap = (ad.kind === "monetag_url" || (ad.kind === "video_url" && isYouTube(ad.payload))) ? 20000 : 60000;
+    advanceRef.current = window.setTimeout(() => next(), cap) as unknown as number;
 
-    return () => {
-      if (tickRef.current) window.clearInterval(tickRef.current);
-      if (advanceRef.current) window.clearTimeout(advanceRef.current);
-    };
+    // Try to play with sound
+    const v = videoRef.current;
+    if (v && (ad.kind === "video_file" || (ad.kind === "video_url" && !isYouTube(ad.payload)))) {
+      v.muted = false;
+      v.volume = 1;
+      v.play().catch(() => {
+        // autoplay-with-sound blocked → fall back muted
+        v.muted = true;
+        v.play().catch(() => {});
+      });
+    }
+    return clearTimers;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, loading, ads.length]);
 
   const next = () => {
-    setAds((curr) => {
-      if (!curr.length) { onAdComplete?.(); return curr; }
-      const nextIdx = idx + 1;
-      if (nextIdx >= curr.length) {
-        saveIdx(0);
-        onAdComplete?.();
-      } else {
-        saveIdx(nextIdx);
-        setIdx(nextIdx);
-      }
-      return curr;
-    });
+    const nextIdx = idx + 1;
+    if (!ads.length || nextIdx >= ads.length) {
+      saveIdx(0);
+      onAdComplete?.();
+    } else {
+      saveIdx(nextIdx);
+      setIdx(nextIdx);
+    }
   };
 
-  if (loading) {
-    return <div className="w-full h-full bg-black grid place-items-center text-white/60 text-sm">Loading ad…</div>;
-  }
-  if (ads.length === 0) {
-    return <NoAdsFallback onSkippable={onSkippable} onAdComplete={onAdComplete} />;
-  }
+  if (loading) return <div className="w-full h-full bg-black grid place-items-center text-white/60 text-sm">Loading ad…</div>;
+  if (ads.length === 0) return <NoAdsFallback onSkippable={onSkippable} onAdComplete={onAdComplete} />;
 
   const ad = ads[idx];
 
@@ -131,25 +135,26 @@ export const AdSlot = ({ onAdComplete, onSkippable }: Props) => {
   if (ad.kind === "video_url" || ad.kind === "video_file") {
     return (
       <video
+        ref={videoRef}
         key={ad.id}
         src={ad.payload}
         className="w-full h-full object-contain bg-black"
         autoPlay
-        muted
         playsInline
+        preload="auto"
         onEnded={next}
       />
     );
   }
-  // monetag — show banner while the new tab loads, then advance
+  // monetag → embed in iframe directly inside the player; auto-skip after 20s
   return (
-    <div className="w-full h-full bg-black grid place-items-center text-center p-6 text-white">
-      <div>
-        <div className="opacity-60 text-xs uppercase tracking-[0.2em] mb-2">Sponsored</div>
-        <div className="text-lg font-semibold">{ad.title}</div>
-        <div className="opacity-60 text-xs mt-3">Opening sponsor in a new tab…</div>
-      </div>
-    </div>
+    <iframe
+      key={ad.id}
+      src={ad.payload}
+      className="w-full h-full bg-black"
+      sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+      title={ad.title}
+    />
   );
 };
 
@@ -164,7 +169,6 @@ const NoAdsFallback = ({ onSkippable, onAdComplete }: { onSkippable?: () => void
       <div>
         <div className="opacity-60 text-xs uppercase tracking-[0.2em] mb-2">Advertisement</div>
         <div className="font-semibold">No ads configured.</div>
-        <div className="opacity-60 text-xs mt-2">Admins can add ads at /admin</div>
       </div>
     </div>
   );
