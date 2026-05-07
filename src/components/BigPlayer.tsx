@@ -320,6 +320,19 @@ export default function BigPlayer({
             </div>
           </div>
         )}
+        {/* ── Live chat overlay ── */}
+        {chatOpen && channelId && channelKind && (
+          <div className="absolute inset-0 z-30 bg-background/97 backdrop-blur-xl flex flex-col">
+            <div className="px-4 pt-3 pb-2 flex items-center gap-2 border-b border-border/60 shrink-0">
+              <MessageCircle className="h-4 w-4" />
+              <div className="text-sm font-semibold">Live chat</div>
+              <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setChatOpen(false)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <LiveChat channelKind={channelKind} channelId={channelId} className="flex-1 min-h-0" />
+          </div>
+        )}
       </div>
 
       {/* ══ BOTTOM CONTROLS — always visible for both radio and TV ══ */}
