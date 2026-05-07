@@ -12,6 +12,10 @@ import LiveStatsBar from "@/components/LiveStatsBar";
 import BigPlayer, { PlaylistItem } from "@/components/BigPlayer";
 import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead, getEntry, DEAD_TRIES } from "@/lib/reliability";
 import { KENYA_YT_CHANNELS, YT_PREFIX, isYouTubeStream, ytChannelIdFromUrl } from "@/lib/kenyaYouTube";
+import { startListenerTracking } from "@/lib/listenerTracking";
+import { supabase } from "@/integrations/supabase/client";
+import { Link } from "react-router-dom";
+import { User as UserIcon, Megaphone } from "lucide-react";
 
 
 type Country = { name: string; iso_3166_1: string; stationcount: number };
@@ -1169,7 +1173,7 @@ const Index = () => {
       {currentTv && bigPlayer && ytVideoId && (
         <iframe
           key={ytVideoId}
-          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&mute=1&playsinline=1&modestbranding=1&rel=0`}
+          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&mute=0&playsinline=1&modestbranding=1&rel=0&enablejsapi=1`}
           className="fixed z-[55] left-0 right-0 top-[88px] bottom-[222px] w-full bg-black"
           allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
           allowFullScreen
