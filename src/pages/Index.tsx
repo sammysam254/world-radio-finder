@@ -187,7 +187,21 @@ const Index = () => {
     return () => c.removeEventListener?.("change", handler);
   }, []);
 
-  const fetchWithFallback = async (path: string) => {
+  // Anonymous listener tracking
+  useEffect(() => { startListenerTracking(); }, []);
+
+  // Live marquee texts (admin-managed)
+  const [marqueesTop, setMarqueesTop] = useState<string[]>([]);
+  const [marqueesBottom, setMarqueesBottom] = useState<string[]>([]);
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("marquee_texts").select("text,position").eq("active", true).order("sequence");
+      setMarqueesTop((data || []).filter((m: any) => m.position === "top").map((m: any) => m.text));
+      setMarqueesBottom((data || []).filter((m: any) => m.position === "bottom").map((m: any) => m.text));
+    })();
+  }, []);
+
+
     let lastErr: unknown;
     for (const base of API_BASES) {
       try {
