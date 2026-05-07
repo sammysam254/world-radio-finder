@@ -744,7 +744,7 @@ const Index = () => {
             <div className="marquee-track" style={{whiteSpace:"nowrap",fontSize:"11px",fontWeight:600,color:"rgba(255,255,255,0.93)",padding:"5px 0"}}>
               {[0,1].map(k => (
                 <span key={k} className="px-8">
-                  📢 Contact +254706499848 to advertise here &nbsp;·&nbsp; Reach thousands of radio &amp; TV listeners worldwide &nbsp;·&nbsp; Affordable packages available &nbsp;·&nbsp; Boost your brand on Wavebox &nbsp;·&nbsp; 📢 Contact +254706499848 to advertise here
+                  {(marqueesTop.length ? marqueesTop : ["📢 Contact +254706499848 to advertise here"]).join("  ·  ")}
                 </span>
               ))}
             </div>
@@ -754,7 +754,7 @@ const Index = () => {
           <div className="marquee-track" style={{whiteSpace:"nowrap",fontSize:"11px",fontWeight:600,color:"rgba(255,255,255,0.88)",padding:"4px 0"}}>
             {[0,1].map(k => (
               <span key={k} className="px-8">
-                This system is developed and is the property of Sam. Please call 0706499848 for Softwares, AI Tools, Websites, SEO Optimization, Mobile Apps and any other custom tool
+                {(marqueesBottom.length ? marqueesBottom : ["Wavebox"]).join("  ·  ")}
               </span>
             ))}
           </div>
