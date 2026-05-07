@@ -245,7 +245,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest req){
                 String url=req.getUrl().toString();
-                if (url.contains("internetfm.netlify.app")) return false;
+                if (url.contains("wavebox.site")) return false;
                 if (url.startsWith("http")){startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));return true;}
                 return false;
             }
