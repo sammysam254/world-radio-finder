@@ -13,29 +13,36 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const checkRoute = async (uid: string) => {
+    const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", uid);
+    const isAdmin = !!roles?.some((r: any) => r.role === "admin");
+    nav(isAdmin ? "/admin" : "/", { replace: true });
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) nav("/admin", { replace: true });
+      if (data.session) checkRoute(data.session.user.id);
     });
-  }, [nav]);
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email, password,
-          options: { emailRedirectTo: `${window.location.origin}/admin` },
+          options: { emailRedirectTo: `${window.location.origin}/` },
         });
         if (error) throw error;
-        toast.success("Account created. You can sign in now.");
-        setMode("signin");
+        toast.success("Account created.");
+        if (data.session) checkRoute(data.session.user.id);
+        else setMode("signin");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success("Signed in");
-        nav("/admin", { replace: true });
+        if (data.session) checkRoute(data.session.user.id);
       }
     } catch (e: any) {
       toast.error(e.message || "Auth failed");

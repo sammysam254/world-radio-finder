@@ -12,6 +12,10 @@ import LiveStatsBar from "@/components/LiveStatsBar";
 import BigPlayer, { PlaylistItem } from "@/components/BigPlayer";
 import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead, getEntry, DEAD_TRIES } from "@/lib/reliability";
 import { KENYA_YT_CHANNELS, YT_PREFIX, isYouTubeStream, ytChannelIdFromUrl } from "@/lib/kenyaYouTube";
+import { startListenerTracking } from "@/lib/listenerTracking";
+import { supabase } from "@/integrations/supabase/client";
+import { Link } from "react-router-dom";
+import { User as UserIcon, Megaphone } from "lucide-react";
 
 
 type Country = { name: string; iso_3166_1: string; stationcount: number };
@@ -181,6 +185,20 @@ const Index = () => {
     const handler = () => setNetQuality(detectNetQuality());
     c.addEventListener?.("change", handler);
     return () => c.removeEventListener?.("change", handler);
+  }, []);
+
+  // Anonymous listener tracking
+  useEffect(() => { startListenerTracking(); }, []);
+
+  // Live marquee texts (admin-managed)
+  const [marqueesTop, setMarqueesTop] = useState<string[]>([]);
+  const [marqueesBottom, setMarqueesBottom] = useState<string[]>([]);
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("marquee_texts").select("text,position").eq("active", true).order("sequence");
+      setMarqueesTop((data || []).filter((m: any) => m.position === "top").map((m: any) => m.text));
+      setMarqueesBottom((data || []).filter((m: any) => m.position === "bottom").map((m: any) => m.text));
+    })();
   }, []);
 
   const fetchWithFallback = async (path: string) => {
@@ -726,7 +744,7 @@ const Index = () => {
             <div className="marquee-track" style={{whiteSpace:"nowrap",fontSize:"11px",fontWeight:600,color:"rgba(255,255,255,0.93)",padding:"5px 0"}}>
               {[0,1].map(k => (
                 <span key={k} className="px-8">
-                  📢 Contact +254706499848 to advertise here &nbsp;·&nbsp; Reach thousands of radio &amp; TV listeners worldwide &nbsp;·&nbsp; Affordable packages available &nbsp;·&nbsp; Boost your brand on Wavebox &nbsp;·&nbsp; 📢 Contact +254706499848 to advertise here
+                  {(marqueesTop.length ? marqueesTop : ["📢 Contact +254706499848 to advertise here"]).join("  ·  ")}
                 </span>
               ))}
             </div>
@@ -736,7 +754,7 @@ const Index = () => {
           <div className="marquee-track" style={{whiteSpace:"nowrap",fontSize:"11px",fontWeight:600,color:"rgba(255,255,255,0.88)",padding:"4px 0"}}>
             {[0,1].map(k => (
               <span key={k} className="px-8">
-                This system is developed and is the property of Sam. Please call 0706499848 for Softwares, AI Tools, Websites, SEO Optimization, Mobile Apps and any other custom tool
+                {(marqueesBottom.length ? marqueesBottom : ["Wavebox"]).join("  ·  ")}
               </span>
             ))}
           </div>
@@ -763,9 +781,14 @@ const Index = () => {
             <p className="text-xs text-muted-foreground">Free radio & TV · worldwide</p>
           </div>
         </div>
-        <a href="https://www.radio-browser.info" target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-          Powered by Radio-Browser & IPTV-Org
-        </a>
+        <div className="flex items-center gap-2">
+          <Link to="/advertise" className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-border hover:bg-muted transition-colors">
+            <Megaphone className="h-3.5 w-3.5" /> Advertise
+          </Link>
+          <Link to="/profile" aria-label="Profile" className="h-9 w-9 rounded-full grid place-items-center border border-border hover:bg-muted transition-colors">
+            <UserIcon className="h-4 w-4" />
+          </Link>
+        </div>
       </header>
 
       <div className="container">
@@ -1169,7 +1192,7 @@ const Index = () => {
       {currentTv && bigPlayer && ytVideoId && (
         <iframe
           key={ytVideoId}
-          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&mute=1&playsinline=1&modestbranding=1&rel=0`}
+          src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1&mute=0&playsinline=1&modestbranding=1&rel=0&enablejsapi=1`}
           className="fixed z-[55] left-0 right-0 top-[88px] bottom-[222px] w-full bg-black"
           allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
           allowFullScreen
