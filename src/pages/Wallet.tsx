@@ -142,7 +142,9 @@ const Wallet = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed");
       if (data?.error) throw new Error(data.error);
+      if (!data.pay_address) throw new Error("No payment address returned. Check NowPayments API key.");
       setCryptoPay(data);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: any) { toast.error(e.message || "Failed"); }
     finally { setBusy(false); }
   };
@@ -169,6 +171,7 @@ const Wallet = () => {
       if (data?.error) throw new Error(data.error);
       setPaystackUrl(data.authorization_url);
       setPaystackId(data.id);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: any) { toast.error(e.message || "Failed"); }
     finally { setBusy(false); }
   };
