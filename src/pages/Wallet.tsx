@@ -52,14 +52,34 @@ const Wallet = () => {
       const { data: existing } = await supabase.from("wallets").select("user_id").eq("user_id", session.user.id).maybeSingle();
       if (!existing) await supabase.from("wallets").insert({ user_id: session.user.id, balance_cents: 0 });
       load(session.user.id);
-      // Load crypto options
+      // Load crypto options via direct fetch (SDK invoke only supports POST)
       try {
-        const { data } = await supabase.functions.invoke("nowpayments", { body: { } as any, method: "GET" } as any);
-        if (data?.currencies) { setCryptos(data.currencies); setChosenCrypto(data.currencies[0]?.code || ""); }
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+        const { data: { session: sess } } = await supabase.auth.getSession();
+        const res = await fetch(`${supabaseUrl}/functions/v1/nowpayments?action=currencies`, {
+          headers: {
+            apikey: supabaseKey,
+            Authorization: sess ? `Bearer ${sess.access_token}` : `Bearer ${supabaseKey}`,
+          },
+        });
+        const data = await res.json();
+        if (data?.currencies && data.currencies.length > 0) {
+          setCryptos(data.currencies);
+          setChosenCrypto(data.currencies[0]?.code || "");
+        } else {
+          throw new Error("empty");
+        }
       } catch {
-        // fallback
-        const fb = [{ code: "usdttrc20", network: "TRON (TRC20)" }, { code: "usdterc20", network: "Ethereum (ERC20)" }];
-        setCryptos(fb); setChosenCrypto(fb[0].code);
+        const fb = [
+          { code: "usdttrc20", network: "TRON (TRC20)" },
+          { code: "usdterc20", network: "Ethereum (ERC20)" },
+          { code: "usdtbsc",   network: "BNB Smart Chain (BEP20)" },
+          { code: "usdtmatic", network: "Polygon" },
+          { code: "usdtsol",   network: "Solana" },
+        ];
+        setCryptos(fb);
+        setChosenCrypto(fb[0].code);
       }
     })();
   }, [nav]);

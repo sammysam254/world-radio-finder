@@ -9,6 +9,9 @@ const SECRET = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
 const SUPA_URL = Deno.env.get("SUPABASE_URL")!;
 const SVC = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// KES per USD rate — set KES_PER_USD in Supabase Edge Function secrets to override
+const KES_PER_USD = Number(Deno.env.get("KES_PER_USD") || "130");
+
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -23,7 +26,19 @@ async function ps(path: string, init: RequestInit = {}) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const url = new URL(req.url);
-  const action = url.searchParams.get("action") || "init";
+  let action = url.searchParams.get("action") || "init";
+  let bodyData: Record<string, unknown> = {};
+
+  if (req.method === "POST") {
+    try {
+      bodyData = await req.json();
+      if (bodyData.action && typeof bodyData.action === "string") {
+        action = bodyData.action;
+      }
+    } catch {
+      bodyData = {};
+    }
+  }
 
   try {
     if (action === "init") {
@@ -33,10 +48,11 @@ Deno.serve(async (req) => {
       });
       const { data: { user } } = await userClient.auth.getUser();
       if (!user) return json({ error: "unauthorized" }, 401);
-      const body = await req.json();
-      const usd = Number(body.amount_usd);
-      const channel = String(body.channel || "card"); // card | bank | mobile_money
+
+      const usd = Number(bodyData.amount_usd);
+      const channel = String(bodyData.channel || "card");
       if (!(usd >= 5)) return json({ error: "min $5" }, 400);
+      if (!user.email) return json({ error: "user email required" }, 400);
 
       const supa = createClient(SUPA_URL, SVC);
       const grossCents = Math.round(usd * 100);
@@ -46,26 +62,41 @@ Deno.serve(async (req) => {
       const { data: payRow, error: insErr } = await supa.from("wallet_payments").insert({
         user_id: user.id, provider: "paystack", kind: "deposit",
         amount_usd_cents: grossCents, fee_cents: feeCents, net_cents: netCents,
-        pay_currency: "usd", pay_network: channel, status: "pending",
+        pay_currency: channel === "card" ? "usd" : "kes",
+        pay_network: channel, status: "pending",
       }).select().single();
       if (insErr) return json({ error: insErr.message }, 500);
 
-      // Paystack expects amount in lowest unit of charge currency (kobo for NGN, cents for USD)
+      const isCard = channel === "card";
+      const currency = isCard ? "USD" : "KES";
+      const amount = isCard
+        ? grossCents
+        : Math.round(usd * KES_PER_USD * 100);
+
+      const channelsMap: Record<string, string[]> = {
+        card: ["card"],
+        bank: ["bank", "bank_transfer"],
+        mobile_money: ["mobile_money"],
+      };
+
       const r = await ps("/transaction/initialize", {
         method: "POST",
         body: JSON.stringify({
           email: user.email,
-          amount: grossCents,
-          currency: "USD",
+          amount,
+          currency,
           reference: payRow.id.replace(/-/g, ""),
-          channels: channel === "card" ? ["card"] : channel === "bank" ? ["bank", "bank_transfer"] : ["mobile_money"],
-          metadata: { payment_id: payRow.id, user_id: user.id },
+          channels: channelsMap[channel] ?? ["card"],
+          metadata: { payment_id: payRow.id, user_id: user.id, amount_usd: usd },
         }),
       });
+
       if (!r.ok || !r.body?.status) {
         await supa.from("wallet_payments").update({ status: "failed", raw: r.body }).eq("id", payRow.id);
-        return json({ error: r.body?.message || "init failed", details: r.body }, 500);
+        const errMsg = r.body?.message || r.body?.data?.message || "Paystack init failed. Ensure PAYSTACK_SECRET_KEY is set and international payments are enabled on your Paystack dashboard.";
+        return json({ error: errMsg, details: r.body }, 500);
       }
+
       await supa.from("wallet_payments").update({
         external_id: r.body.data.reference, status: "waiting", raw: r.body.data,
         expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
@@ -74,7 +105,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "verify") {
-      const id = url.searchParams.get("id");
+      const id = url.searchParams.get("id") || String(bodyData.id || "");
       if (!id) return json({ error: "id required" }, 400);
       const supa = createClient(SUPA_URL, SVC);
       const { data: row } = await supa.from("wallet_payments").select("*").eq("id", id).maybeSingle();
