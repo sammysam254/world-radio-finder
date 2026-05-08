@@ -249,7 +249,6 @@ const Wallet = () => {
                 </Button>
               </TabsContent>
               <TabsContent value="paystack" className="pt-3 space-y-2">
-                <div className="text-xs text-muted-foreground mb-2">Charged in KES at current rate</div>
                 <div className="grid grid-cols-2 gap-2">
                   <Button variant="outline" onClick={() => startPaystackDeposit("card")} disabled={busy} className="w-full">
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "💳 Card"}
