@@ -9,7 +9,6 @@ const SECRET = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
 const SUPA_URL = Deno.env.get("SUPABASE_URL")!;
 const SVC = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// KES per USD rate — set KES_PER_USD in Supabase Edge Function secrets to override
 const KES_PER_USD = Number(Deno.env.get("KES_PER_USD") || "130");
 
 const json = (b: unknown, s = 200) =>
@@ -66,7 +65,7 @@ Deno.serve(async (req) => {
       }).select().single();
       if (insErr) return json({ error: insErr.message }, 500);
 
-      // All channels use KES (merchant default currency)
+      // ALL channels use KES - merchant default currency
       const amountKobo = Math.round(usd * KES_PER_USD * 100);
 
       const channelsMap: Record<string, string[]> = {
