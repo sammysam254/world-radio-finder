@@ -62,16 +62,12 @@ Deno.serve(async (req) => {
       const { data: payRow, error: insErr } = await supa.from("wallet_payments").insert({
         user_id: user.id, provider: "paystack", kind: "deposit",
         amount_usd_cents: grossCents, fee_cents: feeCents, net_cents: netCents,
-        pay_currency: channel === "card" ? "usd" : "kes",
-        pay_network: channel, status: "pending",
+        pay_currency: "kes", pay_network: channel, status: "pending",
       }).select().single();
       if (insErr) return json({ error: insErr.message }, 500);
 
-      const isCard = channel === "card";
-      const currency = isCard ? "USD" : "KES";
-      const amount = isCard
-        ? grossCents
-        : Math.round(usd * KES_PER_USD * 100);
+      // All channels use KES (merchant default currency)
+      const amountKobo = Math.round(usd * KES_PER_USD * 100);
 
       const channelsMap: Record<string, string[]> = {
         card: ["card"],
@@ -83,8 +79,8 @@ Deno.serve(async (req) => {
         method: "POST",
         body: JSON.stringify({
           email: user.email,
-          amount,
-          currency,
+          amount: amountKobo,
+          currency: "KES",
           reference: payRow.id.replace(/-/g, ""),
           channels: channelsMap[channel] ?? ["card"],
           metadata: { payment_id: payRow.id, user_id: user.id, amount_usd: usd },
@@ -93,7 +89,7 @@ Deno.serve(async (req) => {
 
       if (!r.ok || !r.body?.status) {
         await supa.from("wallet_payments").update({ status: "failed", raw: r.body }).eq("id", payRow.id);
-        const errMsg = r.body?.message || r.body?.data?.message || "Paystack init failed. Ensure PAYSTACK_SECRET_KEY is set and international payments are enabled on your Paystack dashboard.";
+        const errMsg = r.body?.message || r.body?.data?.message || "Paystack init failed";
         return json({ error: errMsg, details: r.body }, 500);
       }
 
