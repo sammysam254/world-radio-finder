@@ -85,6 +85,24 @@ const Admin = () => {
     refreshWithdrawals();
   };
 
+  const sendViaPaystack = async (id: string) => {
+    if (!confirm("Send this withdrawal via Paystack Transfer? This will deduct from your Paystack balance.")) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPA_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(`${SUPA_URL}/functions/v1/paystack-transfer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPA_KEY, Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ action: "initiate", payment_id: id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Failed");
+      toast.success(`Transfer initiated! Code: ${data.transfer_code}`);
+      refreshWithdrawals();
+    } catch (e: any) { toast.error(e.message || "Failed"); }
+  };
+
   const signOut = async () => { await supabase.auth.signOut(); nav("/auth", { replace: true }); };
 
   const addAd = async () => {
@@ -276,7 +294,8 @@ const Admin = () => {
                     </div>
                     {w.status === "pending" && (
                       <div className="flex gap-2 mt-2">
-                        <Button size="sm" onClick={() => resolveWithdrawal(w.id, true)}><Check className="h-4 w-4 mr-1" /> Approve & paid</Button>
+                        <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => sendViaPaystack(w.id)} disabled={w.status !== "pending"}>💸 Send via Paystack</Button>
+                        <Button size="sm" onClick={() => resolveWithdrawal(w.id, true)} variant="outline"><Check className="h-4 w-4 mr-1" /> Mark paid</Button>
                         <Button size="sm" variant="outline" onClick={() => resolveWithdrawal(w.id, false)}><X className="h-4 w-4 mr-1" /> Reject & refund</Button>
                       </div>
                     )}
