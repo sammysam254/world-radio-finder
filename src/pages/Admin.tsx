@@ -257,6 +257,35 @@ const Admin = () => {
             </Card>
           </TabsContent>
 
+          <TabsContent value="withdrawals" className="space-y-4 pt-4">
+            <Card className="p-4">
+              <h2 className="font-semibold mb-3">Withdrawal requests ({withdrawals.length})</h2>
+              {withdrawals.length === 0 && <div className="text-sm text-muted-foreground">No requests.</div>}
+              <div className="space-y-2">
+                {withdrawals.map((w) => (
+                  <div key={w.id} className="border rounded-md p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium">${(w.amount_usd_cents/100).toFixed(2)} · {w.pay_network}</div>
+                        <div className="text-xs text-muted-foreground break-all">User: {w.user_id}</div>
+                        <div className="text-xs break-all">Dest: {JSON.stringify(w.destination)}</div>
+                        <div className="text-xs text-muted-foreground">{new Date(w.created_at).toLocaleString()}</div>
+                        {w.admin_note && <div className="text-xs">Note: {w.admin_note}</div>}
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded ${w.status === "approved" ? "bg-green-500/15 text-green-600" : w.status === "rejected" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-600"}`}>{w.status}</span>
+                    </div>
+                    {w.status === "pending" && (
+                      <div className="flex gap-2 mt-2">
+                        <Button size="sm" onClick={() => resolveWithdrawal(w.id, true)}><Check className="h-4 w-4 mr-1" /> Approve & paid</Button>
+                        <Button size="sm" variant="outline" onClick={() => resolveWithdrawal(w.id, false)}><X className="h-4 w-4 mr-1" /> Reject & refund</Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="listeners" className="space-y-4 pt-4">
             <Card className="p-4">
               <h2 className="font-semibold mb-3">Recent listeners ({sessions.length})</h2>
