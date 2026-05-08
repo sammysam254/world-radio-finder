@@ -270,7 +270,7 @@ const Wallet = () => {
           <Card className="p-4 space-y-3">
             <div>
               <div className="font-semibold">Deposit</div>
-              <div className="text-xs text-muted-foreground">Min $5 · $1 fee · the rest is credited.</div>
+              <div className="text-xs text-muted-foreground">Min $5 · $1 fee · the rest is credited. Card/Bank/MoMo charged in KES.</div>
             </div>
             <Input type="number" min="5" step="1" value={depositUsd} onChange={(e) => setDepositUsd(e.target.value)} />
             <Tabs defaultValue="crypto">
