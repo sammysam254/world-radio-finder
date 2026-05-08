@@ -425,11 +425,21 @@ const Index = () => {
   const skipAfterTimeout = (reason?: string) => {
     const p = playbackRef.current;
     if (!p) return;
+    // Enforce minimum 60s on a station before auto-skipping. This prevents
+    // racing through dozens of channels when many fail quickly in a row.
+    const MIN_BEFORE_SKIP_MS = 60_000;
+    const elapsed = Date.now() - (p.startedAt || Date.now());
+    if (elapsed < MIN_BEFORE_SKIP_MS) {
+      const remaining = MIN_BEFORE_SKIP_MS - elapsed;
+      setPlayError(`Trying… will skip in ${Math.ceil(remaining/1000)}s if no playback.`);
+      clearStationTimer();
+      p.stationTimer = window.setTimeout(() => skipAfterTimeout(reason), remaining) as unknown as number;
+      return;
+    }
     clearPlaybackTimer();
     clearStationTimer();
     setPlaying(false);
     setBuffering(false);
-    // Mark this station as failed for reliability ranking
     const id = currentRadio?.stationuuid || currentTv?.id;
     if (id) recordFailure(id);
     setPlayError(`Couldn't play after ${p.attempt} ${p.attempt === 1 ? "try" : "tries"}${reason ? ` (${reason})` : ""}. Skipping…`);
