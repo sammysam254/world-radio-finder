@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 type Ad = {
   id: string;
+  source: "admin" | "advertiser";
   kind: "video_file" | "video_url" | "monetag_url";
   title: string;
   payload: string;
@@ -25,136 +26,122 @@ interface Props {
 }
 
 /**
- * AdSlot:
- * - Loads all ads up front and pre-fetches video files (link rel=preload) for instant start.
- * - Plays video with sound (unmuted).
- * - Renders Monetag links INSIDE an iframe (no new tab) — auto-skips after 20s.
- * - URL ads (any non-completing) auto-skip after 20s; videos that finish early advance via onEnded.
- * - Skip becomes available after 5s.
+ * AdSlot — single ad per commercial break.
+ * - All ads (admin + approved advertiser ads) are merged and rotated by sequence,
+ *   one shown per break, persisted across breaks via localStorage.
+ * - Advertiser ads charge the advertiser's wallet via RPC on display; if the
+ *   charge fails (no funds / cap hit), the ad is skipped to the next.
  */
 export const AdSlot = ({ onAdComplete, onSkippable }: Props) => {
   const [ads, setAds] = useState<Ad[]>([]);
-  const [idx, setIdx] = useState<number>(0);
+  const [current, setCurrent] = useState<Ad | null>(null);
   const [loading, setLoading] = useState(true);
-  const tickRef = useRef<number | null>(null);
   const skipRef = useRef<number | null>(null);
   const advanceRef = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const completedRef = useRef(false);
 
   // Load + preload
   useEffect(() => {
     (async () => {
       const [adminRes, advRes] = await Promise.all([
         supabase.from("ads").select("*").eq("active", true).order("sequence", { ascending: true }),
-        supabase.from("advertiser_ads").select("id,kind,title,payload").eq("status", "approved"),
+        supabase.from("advertiser_ads").select("id,kind,title,payload,created_at").eq("status", "approved").order("created_at", { ascending: true }),
       ]);
       const adminAds = ((adminRes.data || []) as any[]).map((a) => ({
-        id: a.id, kind: a.kind, title: a.title, payload: a.payload, sequence: a.sequence ?? 0,
+        id: a.id, source: "admin" as const, kind: a.kind, title: a.title, payload: a.payload, sequence: a.sequence ?? 0,
       })) as Ad[];
       const advAds = ((advRes.data || []) as any[]).map((a, i) => ({
-        id: a.id, kind: a.kind, title: a.title, payload: a.payload, sequence: 1000 + i,
+        id: a.id, source: "advertiser" as const, kind: a.kind, title: a.title, payload: a.payload, sequence: 1000 + i,
       })) as Ad[];
       const list = [...adminAds, ...advAds];
       setAds(list);
-      const start = list.length ? loadIdx() % list.length : 0;
-      setIdx(start);
       setLoading(false);
 
-      // Preload all direct video URLs/files
+      // Preload direct video URLs
       list.forEach((a) => {
         if ((a.kind === "video_url" && !isYouTube(a.payload)) || a.kind === "video_file") {
           const link = document.createElement("link");
-          link.rel = "preload";
-          link.as = "video";
-          link.href = a.payload;
+          link.rel = "preload"; link.as = "video"; link.href = a.payload;
           document.head.appendChild(link);
         }
       });
     })();
+    return () => clearTimers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Pick the next ad to show, advancing rotation index. Charge advertisers.
+  useEffect(() => {
+    if (loading) return;
+    (async () => {
+      if (ads.length === 0) { setCurrent(null); return; }
+      let startIdx = loadIdx() % ads.length;
+      // Try up to N ads to find one we can show (advertiser charge may fail)
+      for (let attempts = 0; attempts < ads.length; attempts++) {
+        const idx = (startIdx + attempts) % ads.length;
+        const ad = ads[idx];
+        if (ad.source === "advertiser") {
+          const { data, error } = await supabase.rpc("charge_advertiser_impression", { _ad_id: ad.id });
+          if (error || data === null) continue; // skip — no funds or cap reached
+        }
+        saveIdx((idx + 1) % ads.length);
+        setCurrent(ad);
+        return;
+      }
+      // Nothing chargeable — fall back to first admin ad
+      const fallback = ads.find(a => a.source === "admin") || null;
+      setCurrent(fallback);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, ads]);
+
   const clearTimers = () => {
-    if (tickRef.current) window.clearTimeout(tickRef.current);
     if (skipRef.current) window.clearTimeout(skipRef.current);
     if (advanceRef.current) window.clearTimeout(advanceRef.current);
   };
 
   useEffect(() => {
-    if (loading || ads.length === 0) return;
+    if (!current) return;
     clearTimers();
-    // Skippable after 5s
     skipRef.current = window.setTimeout(() => onSkippable?.(), 5000) as unknown as number;
-    // For URL/iframe ads, auto-skip after 20s. Direct video files advance via onEnded; we still cap at 60s.
-    const ad = ads[idx];
-    const cap = (ad.kind === "monetag_url" || (ad.kind === "video_url" && isYouTube(ad.payload))) ? 20000 : 60000;
-    advanceRef.current = window.setTimeout(() => next(), cap) as unknown as number;
+    const cap = (current.kind === "monetag_url" || (current.kind === "video_url" && isYouTube(current.payload))) ? 20000 : 60000;
+    advanceRef.current = window.setTimeout(() => finish(), cap) as unknown as number;
 
-    // Try to play with sound
     const v = videoRef.current;
-    if (v && (ad.kind === "video_file" || (ad.kind === "video_url" && !isYouTube(ad.payload)))) {
-      v.muted = false;
-      v.volume = 1;
-      v.play().catch(() => {
-        // autoplay-with-sound blocked → fall back muted
-        v.muted = true;
-        v.play().catch(() => {});
-      });
+    if (v && (current.kind === "video_file" || (current.kind === "video_url" && !isYouTube(current.payload)))) {
+      v.muted = false; v.volume = 1;
+      v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
     }
     return clearTimers;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, loading, ads.length]);
+  }, [current]);
 
-  const next = () => {
-    const nextIdx = idx + 1;
-    if (!ads.length || nextIdx >= ads.length) {
-      saveIdx(0);
-      onAdComplete?.();
-    } else {
-      saveIdx(nextIdx);
-      setIdx(nextIdx);
-    }
+  const finish = () => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    onAdComplete?.();
   };
 
   if (loading) return <div className="w-full h-full bg-black grid place-items-center text-white/60 text-sm">Loading ad…</div>;
-  if (ads.length === 0) return <NoAdsFallback onSkippable={onSkippable} onAdComplete={onAdComplete} />;
+  if (!current) return <NoAdsFallback onSkippable={onSkippable} onAdComplete={finish} />;
 
-  const ad = ads[idx];
-
-  if (ad.kind === "video_url" && isYouTube(ad.payload)) {
+  if (current.kind === "video_url" && isYouTube(current.payload)) {
     return (
-      <iframe
-        key={ad.id}
-        src={ytEmbed(ad.payload)}
-        className="w-full h-full"
-        allow="autoplay; fullscreen"
-        allowFullScreen
-        title={ad.title}
-      />
+      <iframe key={current.id} src={ytEmbed(current.payload)} className="w-full h-full"
+        allow="autoplay; fullscreen" allowFullScreen title={current.title} />
     );
   }
-  if (ad.kind === "video_url" || ad.kind === "video_file") {
+  if (current.kind === "video_url" || current.kind === "video_file") {
     return (
-      <video
-        ref={videoRef}
-        key={ad.id}
-        src={ad.payload}
+      <video ref={videoRef} key={current.id} src={current.payload}
         className="w-full h-full object-contain bg-black"
-        autoPlay
-        playsInline
-        preload="auto"
-        onEnded={next}
-      />
+        autoPlay playsInline preload="auto" onEnded={finish} />
     );
   }
-  // monetag → embed in iframe directly inside the player; auto-skip after 20s
   return (
-    <iframe
-      key={ad.id}
-      src={ad.payload}
-      className="w-full h-full bg-black"
-      sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-      title={ad.title}
-    />
+    <iframe key={current.id} src={current.payload} className="w-full h-full bg-black"
+      sandbox="allow-scripts allow-same-origin allow-popups allow-forms" title={current.title} />
   );
 };
 
