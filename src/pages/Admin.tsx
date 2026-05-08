@@ -16,6 +16,7 @@ type Ad = {
 type Marquee = { id: string; text: string; position: string; active: boolean; sequence: number };
 type Session = { id: string; session_key: string; country: string | null; city: string | null; user_agent: string | null; started_at: string; last_seen_at: string; seconds_total: number };
 type AdvAd = { id: string; user_id: string; title: string; kind: string; payload: string; daily_impressions: number; status: string; rejection_reason: string | null; created_at: string };
+type Withdrawal = { id: string; user_id: string; amount_usd_cents: number; pay_network: string | null; destination: any; status: string; created_at: string; admin_note: string | null };
 
 const Admin = () => {
   const nav = useNavigate();
@@ -38,6 +39,7 @@ const Admin = () => {
 
   // Advertiser ads
   const [advAds, setAdvAds] = useState<AdvAd[]>([]);
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
 
   useEffect(() => {
     const init = async () => {
@@ -55,7 +57,7 @@ const Admin = () => {
     return () => sub.subscription.unsubscribe();
   }, [nav]);
 
-  const refreshAll = () => { refresh(); refreshMarquees(); refreshSessions(); refreshAdv(); };
+  const refreshAll = () => { refresh(); refreshMarquees(); refreshSessions(); refreshAdv(); refreshWithdrawals(); };
   const refresh = async () => {
     const { data } = await supabase.from("ads").select("*").order("sequence");
     setAds((data || []) as Ad[]);
@@ -71,6 +73,16 @@ const Admin = () => {
   const refreshAdv = async () => {
     const { data } = await supabase.from("advertiser_ads").select("*").order("created_at", { ascending: false });
     setAdvAds((data || []) as AdvAd[]);
+  };
+  const refreshWithdrawals = async () => {
+    const { data } = await supabase.from("wallet_payments").select("*").eq("kind", "withdrawal").order("created_at", { ascending: false });
+    setWithdrawals((data || []) as Withdrawal[]);
+  };
+  const resolveWithdrawal = async (id: string, approve: boolean) => {
+    const note = prompt(approve ? "Note (optional)" : "Reason (optional)") || "";
+    const { error } = await supabase.rpc("admin_resolve_withdrawal", { _payment_id: id, _approve: approve, _note: note });
+    if (error) toast.error(error.message); else toast.success(approve ? "Approved" : "Rejected & refunded");
+    refreshWithdrawals();
   };
 
   const signOut = async () => { await supabase.auth.signOut(); nav("/auth", { replace: true }); };
