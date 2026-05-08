@@ -127,10 +127,20 @@ const Wallet = () => {
     if (!chosenCrypto) { toast.error("Select a network"); return; }
     setBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("nowpayments", {
-        body: { amount_usd: usd, pay_currency: chosenCrypto },
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${supabaseUrl}/functions/v1/nowpayments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseKey,
+          Authorization: `Bearer ${session?.access_token ?? supabaseKey}`,
+        },
+        body: JSON.stringify({ amount_usd: usd, pay_currency: chosenCrypto }),
       });
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed");
       if (data?.error) throw new Error(data.error);
       setCryptoPay(data);
     } catch (e: any) { toast.error(e.message || "Failed"); }
@@ -142,10 +152,20 @@ const Wallet = () => {
     if (!(usd >= 5)) { toast.error("Min $5"); return; }
     setBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("paystack", {
-        body: { amount_usd: usd, channel },
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${supabaseUrl}/functions/v1/paystack`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseKey,
+          Authorization: `Bearer ${session?.access_token ?? supabaseKey}`,
+        },
+        body: JSON.stringify({ amount_usd: usd, channel }),
       });
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed");
       if (data?.error) throw new Error(data.error);
       setPaystackUrl(data.authorization_url);
       setPaystackId(data.id);
