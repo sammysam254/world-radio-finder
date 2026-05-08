@@ -135,7 +135,6 @@ const Wallet = () => {
       if (!data.authorization_url) throw new Error("No payment URL returned");
       setPaystackId(data.id);
       setPaystackUrl(data.authorization_url);
-      window.open(data.authorization_url, "_blank");
       scrollTop();
     } catch (e: any) { toast.error(e.message || "Failed"); }
     finally { setBusy(false); }
@@ -210,19 +209,22 @@ const Wallet = () => {
         )}
 
         {paystackUrl && !cryptoPay && (
-          <Card className="p-4 space-y-3">
-            <div className="font-semibold">Complete your payment</div>
-            <p className="text-sm text-muted-foreground">Payment page opened in a new tab. Complete payment there then come back and tap verify.</p>
-            <Button variant="outline" className="w-full gap-2" onClick={() => window.open(paystackUrl, "_blank")}>
-              <ExternalLink className="h-4 w-4" /> Reopen payment page
-            </Button>
-            <div className="flex gap-2">
-              <Button onClick={verifyPaystack} disabled={busy} className="flex-1">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "I've paid — verify"}
-              </Button>
-              <Button variant="outline" onClick={() => { setPaystackUrl(null); setPaystackId(null); }}>Cancel</Button>
+          <div className="fixed inset-0 z-50 flex flex-col bg-background">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="font-semibold">Complete payment</div>
+              <div className="flex gap-2">
+                <Button onClick={verifyPaystack} disabled={busy} size="sm">
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "I've paid"}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => { setPaystackUrl(null); setPaystackId(null); }}>Cancel</Button>
+              </div>
             </div>
-          </Card>
+            <iframe
+              src={paystackUrl}
+              className="flex-1 w-full border-none"
+              allow="payment"
+            />
+          </div>
         )}
 
         {!cryptoPay && !paystackUrl && (
