@@ -158,10 +158,11 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="ads">
-          <TabsList className="grid grid-cols-4 w-full">
+          <TabsList className="grid grid-cols-5 w-full">
             <TabsTrigger value="ads">House ads</TabsTrigger>
             <TabsTrigger value="marquees">Marquees</TabsTrigger>
             <TabsTrigger value="reviews">Review ads</TabsTrigger>
+            <TabsTrigger value="withdrawals">Withdrawals</TabsTrigger>
             <TabsTrigger value="listeners">Listeners</TabsTrigger>
           </TabsList>
 
