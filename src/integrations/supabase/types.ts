@@ -86,10 +86,14 @@ export type Database = {
           daily_impressions: number
           id: string
           kind: string
+          last_shown_at: string | null
           payload: string
           rejection_reason: string | null
           status: string
           title: string
+          today_date: string
+          today_impressions: number
+          total_impressions: number
           updated_at: string
           user_id: string
         }
@@ -99,10 +103,14 @@ export type Database = {
           daily_impressions?: number
           id?: string
           kind: string
+          last_shown_at?: string | null
           payload: string
           rejection_reason?: string | null
           status?: string
           title: string
+          today_date?: string
+          today_impressions?: number
+          total_impressions?: number
           updated_at?: string
           user_id: string
         }
@@ -112,10 +120,14 @@ export type Database = {
           daily_impressions?: number
           id?: string
           kind?: string
+          last_shown_at?: string | null
           payload?: string
           rejection_reason?: string | null
           status?: string
           title?: string
+          today_date?: string
+          today_impressions?: number
+          total_impressions?: number
           updated_at?: string
           user_id?: string
         }
@@ -271,6 +283,75 @@ export type Database = {
         }
         Relationships: []
       }
+      wallet_payments: {
+        Row: {
+          admin_note: string | null
+          amount_usd_cents: number
+          created_at: string
+          destination: Json | null
+          expires_at: string | null
+          external_id: string | null
+          fee_cents: number
+          id: string
+          kind: string
+          net_cents: number
+          pay_address: string | null
+          pay_amount: string | null
+          pay_currency: string | null
+          pay_network: string | null
+          provider: string
+          qr_code: string | null
+          raw: Json | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_note?: string | null
+          amount_usd_cents: number
+          created_at?: string
+          destination?: Json | null
+          expires_at?: string | null
+          external_id?: string | null
+          fee_cents?: number
+          id?: string
+          kind: string
+          net_cents?: number
+          pay_address?: string | null
+          pay_amount?: string | null
+          pay_currency?: string | null
+          pay_network?: string | null
+          provider: string
+          qr_code?: string | null
+          raw?: Json | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_note?: string | null
+          amount_usd_cents?: number
+          created_at?: string
+          destination?: Json | null
+          expires_at?: string | null
+          external_id?: string | null
+          fee_cents?: number
+          id?: string
+          kind?: string
+          net_cents?: number
+          pay_address?: string | null
+          pay_amount?: string | null
+          pay_currency?: string | null
+          pay_network?: string | null
+          provider?: string
+          qr_code?: string | null
+          raw?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       wallet_transactions: {
         Row: {
           amount_cents: number
@@ -334,6 +415,15 @@ export type Database = {
         Args: { _delta_cents: number; _user_id: string }
         Returns: number
       }
+      admin_resolve_withdrawal: {
+        Args: { _approve: boolean; _note: string; _payment_id: string }
+        Returns: undefined
+      }
+      charge_advertiser_impression: {
+        Args: { _ad_id: string }
+        Returns: number
+      }
+      credit_deposit: { Args: { _payment_id: string }; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

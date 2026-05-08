@@ -16,6 +16,7 @@ type Ad = {
 type Marquee = { id: string; text: string; position: string; active: boolean; sequence: number };
 type Session = { id: string; session_key: string; country: string | null; city: string | null; user_agent: string | null; started_at: string; last_seen_at: string; seconds_total: number };
 type AdvAd = { id: string; user_id: string; title: string; kind: string; payload: string; daily_impressions: number; status: string; rejection_reason: string | null; created_at: string };
+type Withdrawal = { id: string; user_id: string; amount_usd_cents: number; pay_network: string | null; destination: any; status: string; created_at: string; admin_note: string | null };
 
 const Admin = () => {
   const nav = useNavigate();
@@ -38,6 +39,7 @@ const Admin = () => {
 
   // Advertiser ads
   const [advAds, setAdvAds] = useState<AdvAd[]>([]);
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
 
   useEffect(() => {
     const init = async () => {
@@ -55,7 +57,7 @@ const Admin = () => {
     return () => sub.subscription.unsubscribe();
   }, [nav]);
 
-  const refreshAll = () => { refresh(); refreshMarquees(); refreshSessions(); refreshAdv(); };
+  const refreshAll = () => { refresh(); refreshMarquees(); refreshSessions(); refreshAdv(); refreshWithdrawals(); };
   const refresh = async () => {
     const { data } = await supabase.from("ads").select("*").order("sequence");
     setAds((data || []) as Ad[]);
@@ -71,6 +73,16 @@ const Admin = () => {
   const refreshAdv = async () => {
     const { data } = await supabase.from("advertiser_ads").select("*").order("created_at", { ascending: false });
     setAdvAds((data || []) as AdvAd[]);
+  };
+  const refreshWithdrawals = async () => {
+    const { data } = await supabase.from("wallet_payments").select("*").eq("kind", "withdrawal").order("created_at", { ascending: false });
+    setWithdrawals((data || []) as Withdrawal[]);
+  };
+  const resolveWithdrawal = async (id: string, approve: boolean) => {
+    const note = prompt(approve ? "Note (optional)" : "Reason (optional)") || "";
+    const { error } = await supabase.rpc("admin_resolve_withdrawal", { _payment_id: id, _approve: approve, _note: note });
+    if (error) toast.error(error.message); else toast.success(approve ? "Approved" : "Rejected & refunded");
+    refreshWithdrawals();
   };
 
   const signOut = async () => { await supabase.auth.signOut(); nav("/auth", { replace: true }); };
@@ -146,10 +158,11 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="ads">
-          <TabsList className="grid grid-cols-4 w-full">
+          <TabsList className="grid grid-cols-5 w-full">
             <TabsTrigger value="ads">House ads</TabsTrigger>
             <TabsTrigger value="marquees">Marquees</TabsTrigger>
             <TabsTrigger value="reviews">Review ads</TabsTrigger>
+            <TabsTrigger value="withdrawals">Withdrawals</TabsTrigger>
             <TabsTrigger value="listeners">Listeners</TabsTrigger>
           </TabsList>
 
@@ -236,6 +249,35 @@ const Admin = () => {
                       <div className="flex gap-2 mt-2">
                         <Button size="sm" onClick={() => reviewAd(a.id, "approved")}><Check className="h-4 w-4 mr-1" /> Approve</Button>
                         <Button size="sm" variant="outline" onClick={() => reviewAd(a.id, "rejected")}><X className="h-4 w-4 mr-1" /> Reject</Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="withdrawals" className="space-y-4 pt-4">
+            <Card className="p-4">
+              <h2 className="font-semibold mb-3">Withdrawal requests ({withdrawals.length})</h2>
+              {withdrawals.length === 0 && <div className="text-sm text-muted-foreground">No requests.</div>}
+              <div className="space-y-2">
+                {withdrawals.map((w) => (
+                  <div key={w.id} className="border rounded-md p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium">${(w.amount_usd_cents/100).toFixed(2)} · {w.pay_network}</div>
+                        <div className="text-xs text-muted-foreground break-all">User: {w.user_id}</div>
+                        <div className="text-xs break-all">Dest: {JSON.stringify(w.destination)}</div>
+                        <div className="text-xs text-muted-foreground">{new Date(w.created_at).toLocaleString()}</div>
+                        {w.admin_note && <div className="text-xs">Note: {w.admin_note}</div>}
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded ${w.status === "approved" ? "bg-green-500/15 text-green-600" : w.status === "rejected" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-600"}`}>{w.status}</span>
+                    </div>
+                    {w.status === "pending" && (
+                      <div className="flex gap-2 mt-2">
+                        <Button size="sm" onClick={() => resolveWithdrawal(w.id, true)}><Check className="h-4 w-4 mr-1" /> Approve & paid</Button>
+                        <Button size="sm" variant="outline" onClick={() => resolveWithdrawal(w.id, false)}><X className="h-4 w-4 mr-1" /> Reject & refund</Button>
                       </div>
                     )}
                   </div>
