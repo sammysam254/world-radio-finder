@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ArrowLeft, Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,7 +16,6 @@ type CryptoPayment = {
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
-const KES_PER_USD = 130;
 
 const Wallet = () => {
   const nav = useNavigate();
@@ -28,13 +26,12 @@ const Wallet = () => {
   const [cryptos, setCryptos] = useState<CryptoOpt[]>([]);
   const [chosenCrypto, setChosenCrypto] = useState<string>("");
   const [busy, setBusy] = useState(false);
-  const [depositTab, setDepositTab] = useState<"crypto" | "card" | "mpesa">("crypto");
+  const [depositTab, setDepositTab] = useState<"crypto" | "paystack">("crypto");
   const [depositUsd, setDepositUsd] = useState("5");
-  const [depositKes, setDepositKes] = useState("650");
   const [cryptoPay, setCryptoPay] = useState<CryptoPayment | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
-  const [paystackUrl, setPaystackUrl] = useState<string | null>(null);
   const [paystackId, setPaystackId] = useState<string | null>(null);
+  const [paystackReady, setPaystackReady] = useState(false);
   const [withdrawUsd, setWithdrawUsd] = useState("5");
   const [wMethod, setWMethod] = useState("mobile_money");
   const [wDest, setWDest] = useState("");
@@ -60,6 +57,16 @@ const Wallet = () => {
     if (data?.error) throw new Error(data.error);
     return data;
   };
+
+  const loadPaystackScript = (): Promise<void> => new Promise((resolve) => {
+    const w = window as any;
+    if (w.PaystackPop) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = "https://js.paystack.co/v2/inline.js";
+    s.onload = () => resolve();
+    s.onerror = () => resolve();
+    document.head.appendChild(s);
+  });
 
   useEffect(() => {
     (async () => {
@@ -117,26 +124,8 @@ const Wallet = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not logged in");
       const data = await callFn("nowpayments", { amount_usd: usd, pay_currency: chosenCrypto }, session.access_token);
-      if (!data.pay_address) throw new Error("No payment address returned — check NowPayments API key");
+      if (!data.pay_address) throw new Error("No payment address returned");
       setCryptoPay(data);
-      scrollTop();
-    } catch (e: any) { toast.error(e.message || "Failed"); }
-    finally { setBusy(false); }
-  };
-
-  const startPaystackDeposit = async (channel: "card" | "mobile_money") => {
-    const usd = channel === "mobile_money"
-      ? Math.round((Number(depositKes) / KES_PER_USD) * 100) / 100
-      : parseFloat(depositUsd);
-    if (!(usd >= 5)) { toast.error(channel === "mobile_money" ? "Min KES 650" : "Min $5"); return; }
-    setBusy(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not logged in");
-      const data = await callFn("paystack", { amount_usd: usd, channel }, session.access_token);
-      if (!data.authorization_url) throw new Error("No payment URL returned");
-      setPaystackId(data.id);
-      setPaystackUrl(data.authorization_url);
       scrollTop();
     } catch (e: any) { toast.error(e.message || "Failed"); }
     finally { setBusy(false); }
@@ -152,43 +141,63 @@ const Wallet = () => {
       const j = await r.json();
       if (j.status === "finished") {
         toast.success("Deposit credited!");
-        setPaystackUrl(null); setPaystackId(null);
+        setPaystackReady(false); setPaystackId(null);
         if (uid) load(uid);
       } else {
-        toast.error(`Payment status: ${j.status}. Complete payment first.`);
+        toast.error("Payment not confirmed yet. Complete payment first.");
       }
     } catch (e: any) { toast.error(e.message || "Failed"); }
     finally { setBusy(false); }
   };
 
-  const verifyPaystack = async () => { if (paystackId) verifyPaystackById(paystackId); };
+  const startPaystackDeposit = async () => {
+    const usd = parseFloat(depositUsd);
+    if (!(usd >= 5)) { toast.error("Min $5"); return; }
+    setBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not logged in");
+      await loadPaystackScript();
+      const w = window as any;
+      if (!w.PaystackPop) throw new Error("Paystack failed to load. Check your internet connection.");
+      const data = await callFn("paystack", { amount_usd: usd }, session.access_token);
+      if (!data.authorization_url) throw new Error("No payment URL returned");
+      setPaystackId(data.id);
+      setPaystackReady(true);
+      scrollTop();
+      w.PaystackPop.setup({
+        key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
+        authorization_url: data.authorization_url,
+        callback: () => { verifyPaystackById(data.id); },
+        onClose: () => {},
+      }).openIframe();
+    } catch (e: any) { toast.error(e.message || "Failed"); }
+    finally { setBusy(false); }
+  };
 
   const requestWithdraw = async () => {
     if (!uid) return;
     const usd = parseFloat(withdrawUsd);
     if (!(usd >= 1)) { toast.error("Minimum withdrawal is $1"); return; }
     if (!wDest.trim()) { toast.error("Provide destination details"); return; }
-    setBusy(true);
-    setWResult(null);
+    setBusy(true); setWResult(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not logged in");
       if (wMethod === "crypto") {
         const cents = Math.round(usd * 100);
-        const { error: e1 } = await supabase.from("wallet_transactions").insert({ user_id: uid, kind: "withdrawal", amount_cents: -cents, status: "pending", note: `Crypto withdrawal: ${wDest}` });
-        if (e1) throw e1;
+        await supabase.from("wallet_transactions").insert({ user_id: uid, kind: "withdrawal", amount_cents: -cents, status: "pending", note: `Crypto withdrawal: ${wDest}` });
         await supabase.rpc("adjust_wallet", { _user_id: uid, _delta_cents: -cents });
         await supabase.from("wallet_payments").insert({ user_id: uid, provider: "nowpayments", kind: "withdrawal", amount_usd_cents: cents, net_cents: cents, fee_cents: 0, pay_network: "crypto", status: "pending", destination: { method: "crypto", details: wDest } });
-        setWResult({ ok: true, message: "Crypto withdrawal submitted. Will be processed within 24 hours." });
+        setWResult({ ok: true, message: "Crypto withdrawal submitted. Processed within 24 hours." });
       } else {
         const data = await callFn("paystack-transfer", { action: "withdraw", amount_usd: usd, method: wMethod, details: wDest }, session.access_token);
         setWResult({ ok: true, message: data.message || "Withdrawal sent! Should arrive within minutes." });
+        load(uid);
       }
       setWDest("");
-      load(uid);
     } catch (e: any) {
-      const msg = e.message || "Failed";
-      setWResult({ ok: false, message: msg });
+      setWResult({ ok: false, message: e.message || "Failed" });
     }
     finally { setBusy(false); }
   };
@@ -196,12 +205,14 @@ const Wallet = () => {
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6">
       <div ref={topRef} className="max-w-md mx-auto space-y-4">
-        <button onClick={() => nav("/profile")} className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" /> Back</button>
+        <button onClick={() => nav("/profile")} className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
         <h1 className="text-2xl font-bold">Wallet</h1>
 
         <Card className="p-6 text-center">
           <div className="text-xs text-muted-foreground uppercase tracking-wider">Balance</div>
-          <div className="text-4xl font-black mt-1">${(balance/100).toFixed(2)}</div>
+          <div className="text-4xl font-black mt-1">${(balance / 100).toFixed(2)}</div>
         </Card>
 
         {cryptoPay && (
@@ -209,7 +220,7 @@ const Wallet = () => {
             <div className="flex items-center justify-between">
               <div className="font-semibold">Pay USDT · {cryptoPay.pay_network}</div>
               <div className="text-xs font-mono text-orange-500">
-                {secondsLeft > 0 ? `${Math.floor(secondsLeft/60)}:${(secondsLeft%60).toString().padStart(2,"0")} left` : "expired"}
+                {secondsLeft > 0 ? `${Math.floor(secondsLeft / 60)}:${(secondsLeft % 60).toString().padStart(2, "0")} left` : "expired"}
               </div>
             </div>
             <div className="text-sm">Send exactly <b>{cryptoPay.pay_amount} {cryptoPay.pay_currency?.toUpperCase()}</b> to:</div>
@@ -225,88 +236,38 @@ const Wallet = () => {
           </Card>
         )}
 
-        {paystackUrl && !cryptoPay && (() => {
-          setTimeout(() => {
-            const w = window as any;
-            if (w._paystackOpened) return;
-            w._paystackOpened = true;
-            if (w.PaystackPop) {
-              const handler = w.PaystackPop.setup({
-                key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
-                authorization_url: paystackUrl,
-                callback: () => { w._paystackOpened = false; verifyPaystack(); },
-                onClose: () => { w._paystackOpened = false; },
-              });
-              handler.openIframe();
-            }
-          }, 100);
-          return (
-            <Card className="p-4 space-y-3">
-              <div className="font-semibold">Payment in progress</div>
-              <p className="text-sm text-muted-foreground">Paystack checkout opens automatically. If not, tap below.</p>
-              <Button onClick={() => {
-                const w = window as any;
-                w._paystackOpened = false;
-                if (w.PaystackPop) {
-                  w._paystackOpened = true;
-                  const handler = w.PaystackPop.setup({
-                    key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
-                    authorization_url: paystackUrl,
-                    callback: () => { w._paystackOpened = false; verifyPaystack(); },
-                    onClose: () => { w._paystackOpened = false; },
-                  });
-                  handler.openIframe();
-                }
-              }} className="w-full" disabled={busy}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Open Payment"}
-              </Button>
-              <div className="flex gap-2">
-                <Button onClick={verifyPaystack} disabled={busy} variant="outline" className="flex-1">
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "I have paid"}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => { setPaystackUrl(null); setPaystackId(null); }}>Cancel</Button>
-              </div>
-            </Card>
-          );
-        })()}
+        {paystackReady && !cryptoPay && (
+          <Card className="p-4 space-y-3">
+            <div className="font-semibold">Payment in progress</div>
+            <p className="text-sm text-muted-foreground">Complete payment in the Paystack popup. If it closed, tap below.</p>
+            <Button onClick={() => { if (paystackId) verifyPaystackById(paystackId); }} disabled={busy} variant="outline" className="w-full">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "I have paid — verify"}
+            </Button>
+            <Button variant="ghost" size="sm" className="w-full" onClick={() => { setPaystackReady(false); setPaystackId(null); }}>Cancel</Button>
+          </Card>
+        )}
 
-        {!cryptoPay && !paystackUrl && (
+        {!cryptoPay && !paystackReady && (
           <Card className="p-4 space-y-3">
             <div className="font-semibold">Deposit</div>
 
-            {/* Flat 3-tab switcher — no nested Tabs component */}
-            <div className="grid grid-cols-3 gap-1 bg-muted rounded-lg p-1">
-              {(["crypto", "card", "mpesa"] as const).map(tab => (
-                <button key={tab} onClick={() => setDepositTab(tab)}
-                  className={`rounded-md py-1.5 text-xs font-medium transition-colors ${depositTab === tab ? "bg-background shadow text-foreground" : "text-muted-foreground"}`}>
-                  {tab === "crypto" ? "🔗 Crypto" : tab === "card" ? "💳 Card" : "📱 M-Pesa"}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-1 bg-muted rounded-lg p-1">
+              <button onClick={() => setDepositTab("crypto")}
+                className={`rounded-md py-2 text-xs font-medium transition-colors ${depositTab === "crypto" ? "bg-background shadow text-foreground" : "text-muted-foreground"}`}>
+                🔗 Crypto (USDT)
+              </button>
+              <button onClick={() => setDepositTab("paystack")}
+                className={`rounded-md py-2 text-xs font-medium transition-colors ${depositTab === "paystack" ? "bg-background shadow text-foreground" : "text-muted-foreground"}`}>
+                💳 Pay with Paystack
+              </button>
             </div>
 
-            {/* USD input for Crypto and Card */}
-            {(depositTab === "crypto" || depositTab === "card") && (
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Amount in USD</label>
-                <Input type="number" min="5" step="1" value={depositUsd} onChange={(e) => setDepositUsd(e.target.value)} placeholder="Amount in USD" />
-                <div className="text-xs text-muted-foreground">Min $5 · $1 fee · balance credited in USD</div>
-              </div>
-            )}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Amount in USD</label>
+              <Input type="number" min="5" step="1" value={depositUsd} onChange={(e) => setDepositUsd(e.target.value)} placeholder="Amount in USD" />
+              <div className="text-xs text-muted-foreground">Min $5 · $1 fee · balance credited in USD</div>
+            </div>
 
-            {/* KES input for M-Pesa only */}
-            {depositTab === "mpesa" && (
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Amount in KES</label>
-                <Input type="number" min="500" step="50" value={depositKes}
-                  onChange={(e) => setDepositKes(e.target.value)}
-                  placeholder="Amount in KES" />
-                <div className="text-xs text-muted-foreground">
-                  ≈ ${(Number(depositKes) / KES_PER_USD).toFixed(2)} USD credited · min KES 650
-                </div>
-              </div>
-            )}
-
-            {/* Tab actions */}
             {depositTab === "crypto" && (
               <div className="space-y-2">
                 <label className="text-xs text-muted-foreground">Select network</label>
@@ -318,15 +279,14 @@ const Wallet = () => {
                 </Button>
               </div>
             )}
-            {depositTab === "card" && (
-              <Button onClick={() => startPaystackDeposit("card")} disabled={busy} className="w-full">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay with Card"}
-              </Button>
-            )}
-            {depositTab === "mpesa" && (
-              <Button onClick={() => startPaystackDeposit("mobile_money")} disabled={busy} className="w-full">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay with M-Pesa"}
-              </Button>
+
+            {depositTab === "paystack" && (
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">Card, M-Pesa and Bank Transfer available</div>
+                <Button onClick={startPaystackDeposit} disabled={busy} className="w-full">
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay with Paystack"}
+                </Button>
+              </div>
             )}
           </Card>
         )}
@@ -366,7 +326,7 @@ const Wallet = () => {
                   <div className="text-xs text-muted-foreground truncate">{t.note}</div>
                 </div>
                 <div className={`font-mono text-sm shrink-0 ml-2 ${t.amount_cents >= 0 ? "text-green-600" : "text-red-500"}`}>
-                  {t.amount_cents >= 0 ? "+" : ""}${(Math.abs(t.amount_cents)/100).toFixed(2)}
+                  {t.amount_cents >= 0 ? "+" : ""}${(Math.abs(t.amount_cents) / 100).toFixed(2)}
                 </div>
               </div>
             ))}
