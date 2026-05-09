@@ -224,32 +224,50 @@ const Wallet = () => {
           </Card>
         )}
 
-        {paystackUrl && !cryptoPay && (
-          <Card className="p-4 space-y-3">
-            <div className="font-semibold">Complete your payment</div>
-            <p className="text-sm text-muted-foreground">Tap below — Paystack opens as a popup showing Card, M-Pesa and Bank options.</p>
-            <Button onClick={() => {
-              const w = window as any;
-              const pop = w.PaystackPop;
-              if (!pop) { window.open(paystackUrl!, "_blank"); return; }
-              const handler = pop.setup({
-                key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || (window as any).__PAYSTACK_KEY__ || "",
+        {paystackUrl && !cryptoPay && (() => {
+          setTimeout(() => {
+            const w = window as any;
+            if (w._paystackOpened) return;
+            w._paystackOpened = true;
+            if (w.PaystackPop) {
+              const handler = w.PaystackPop.setup({
+                key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
                 authorization_url: paystackUrl,
-                callback: () => { verifyPaystack(); },
-                onClose: () => { toast("Payment window closed. Tap verify if you completed payment."); },
+                callback: () => { w._paystackOpened = false; verifyPaystack(); },
+                onClose: () => { w._paystackOpened = false; },
               });
               handler.openIframe();
-            }} className="w-full" disabled={busy}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Open Paystack Checkout"}
-            </Button>
-            <div className="flex gap-2">
-              <Button onClick={verifyPaystack} disabled={busy} variant="outline" className="flex-1">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "I've paid — verify"}
+            }
+          }, 100);
+          return (
+            <Card className="p-4 space-y-3">
+              <div className="font-semibold">Payment in progress</div>
+              <p className="text-sm text-muted-foreground">Paystack checkout opens automatically. If not, tap below.</p>
+              <Button onClick={() => {
+                const w = window as any;
+                w._paystackOpened = false;
+                if (w.PaystackPop) {
+                  w._paystackOpened = true;
+                  const handler = w.PaystackPop.setup({
+                    key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
+                    authorization_url: paystackUrl,
+                    callback: () => { w._paystackOpened = false; verifyPaystack(); },
+                    onClose: () => { w._paystackOpened = false; },
+                  });
+                  handler.openIframe();
+                }
+              }} className="w-full" disabled={busy}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Open Payment"}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => { setPaystackUrl(null); setPaystackId(null); }}>Cancel</Button>
-            </div>
-          </Card>
-        )}
+              <div className="flex gap-2">
+                <Button onClick={verifyPaystack} disabled={busy} variant="outline" className="flex-1">
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "I have paid"}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => { setPaystackUrl(null); setPaystackId(null); }}>Cancel</Button>
+              </div>
+            </Card>
+          );
+        })()}
 
         {!cryptoPay && !paystackUrl && (
           <Card className="p-4 space-y-3">
