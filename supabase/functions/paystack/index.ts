@@ -24,43 +24,43 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const url = new URL(req.url);
   let action = url.searchParams.get("action") || "init";
-  let bodyData: Record<string, unknown> = {};
-
+  let body: Record<string, unknown> = {};
   if (req.method === "POST") {
-    try {
-      bodyData = await req.json();
-      if (bodyData.action && typeof bodyData.action === "string") action = bodyData.action;
-    } catch { bodyData = {}; }
+    try { body = await req.json(); if (body.action) action = String(body.action); } catch {}
   }
 
   try {
     if (action === "init") {
       const auth = req.headers.get("Authorization") || "";
-      const userClient = createClient(SUPA_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
-        global: { headers: { Authorization: auth } },
-      });
-      const { data: { user } } = await userClient.auth.getUser();
-      if (!user) return json({ error: "unauthorized" }, 401);
-      if (!user.email) return json({ error: "user email required" }, 400);
+      const uc = createClient(SUPA_URL, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+      const { data: { user } } = await uc.auth.getUser();
+      if (!user?.email) return json({ error: "unauthorized" }, 401);
 
-      const usd = Number(bodyData.amount_usd);
-      if (!(usd >= 5)) return json({ error: "Minimum deposit is $5" }, 400);
+      // Accept amount_kes directly — user entered KES amount
+      const amountKes = Math.round(Number(body.amount_kes));
+      if (!(amountKes >= 500)) return json({ error: "Minimum deposit is KES 500" }, 400);
+
+      // Convert to USD for wallet credit (after $1 fee)
+      const usdGross = amountKes / KES_PER_USD;
+      const usdNet = usdGross - 1; // $1 platform fee
+      if (usdNet <= 0) return json({ error: "Amount too low after fees" }, 400);
 
       const supa = createClient(SUPA_URL, SVC);
-      const grossCents = Math.round(usd * 100);
 
       const { data: payRow, error: insErr } = await supa.from("wallet_payments").insert({
         user_id: user.id, provider: "paystack", kind: "deposit",
-        amount_usd_cents: grossCents, fee_cents: 100, net_cents: grossCents - 100,
-        pay_currency: "kes", pay_network: "all", status: "pending",
+        amount_usd_cents: Math.round(usdGross * 100),
+        fee_cents: 100,
+        net_cents: Math.round(usdNet * 100),
+        pay_currency: "kes",
+        pay_network: "all",
+        status: "pending",
       }).select().single();
       if (insErr) return json({ error: insErr.message }, 500);
 
-      // KES amount in smallest unit (cents) — must be whole integer, NO currency field (defaults to account currency)
-      const amountKobo = Math.round(usd * KES_PER_USD) * 100;
-
-      // Unique reference using payment id + timestamp
-      const reference = payRow.id.replace(/-/g, "").slice(0, 16) + Date.now().toString().slice(-10);
+      // Amount in KES cents (kobo) — whole integer, NO currency field
+      const amountKobo = amountKes * 100;
+      const reference = "WB" + payRow.id.replace(/-/g, "").slice(0, 16) + Date.now().toString().slice(-6);
 
       const r = await ps("/transaction/initialize", {
         method: "POST",
@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
           amount: amountKobo,
           reference,
           callback_url: "https://wavebox.site/wallet",
-          metadata: { payment_id: payRow.id, user_id: user.id, amount_usd: usd },
+          metadata: { payment_id: payRow.id, user_id: user.id, amount_kes: amountKes, amount_usd: usdNet },
         }),
       });
 
@@ -79,23 +79,22 @@ Deno.serve(async (req) => {
       }
 
       await supa.from("wallet_payments").update({
-        external_id: reference,
-        status: "waiting",
-        raw: r.body.data,
+        external_id: reference, status: "waiting", raw: r.body.data,
         expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
       }).eq("id", payRow.id);
 
-      // Return both access_code (for popup) and authorization_url (fallback)
       return json({
         id: payRow.id,
         access_code: r.body.data.access_code,
         authorization_url: r.body.data.authorization_url,
         reference,
+        amount_kes: amountKes,
+        usd_to_credit: usdNet.toFixed(2),
       });
     }
 
     if (action === "verify") {
-      const id = url.searchParams.get("id") || String(bodyData.id || "");
+      const id = url.searchParams.get("id") || String(body.id || "");
       if (!id) return json({ error: "id required" }, 400);
       const supa = createClient(SUPA_URL, SVC);
       const { data: row } = await supa.from("wallet_payments").select("*").eq("id", id).maybeSingle();

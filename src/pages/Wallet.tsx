@@ -116,8 +116,8 @@ const Wallet = () => {
   }, [cryptoPay, uid, secondsLeft]);
 
   const startCryptoDeposit = async () => {
-    const usd = parseFloat(depositUsd);
-    if (!(usd >= 5)) { toast.error("Min $5"); return; }
+    const kes = Number(depositKes);
+    if (!(kes >= 500)) { toast.error("Min KES 500"); return; }
     if (!chosenCrypto) { toast.error("Select a network"); return; }
     setBusy(true);
     try {
@@ -151,8 +151,8 @@ const Wallet = () => {
   };
 
   const startPaystackDeposit = async () => {
-    const usd = parseFloat(depositUsd);
-    if (!(usd >= 5)) { toast.error("Min $5"); return; }
+    const kes = Number(depositKes);
+    if (!(kes >= 500)) { toast.error("Min KES 500"); return; }
     setBusy(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -160,7 +160,7 @@ const Wallet = () => {
       await loadPaystackScript();
       const w = window as any;
       if (!w.PaystackPop) throw new Error("Paystack failed to load. Check your internet connection.");
-      const data = await callFn("paystack", { amount_usd: usd }, session.access_token);
+      const data = await callFn("paystack", { amount_kes: Number(depositKes) }, session.access_token);
       if (!data.authorization_url && !data.access_code) throw new Error(data.error || "Payment init failed");
       setPaystackId(data.id);
       setPaystackReady(true);
@@ -290,6 +290,17 @@ const Wallet = () => {
 
             {depositTab === "paystack" && (
               <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Amount in KES</label>
+                <input
+                  type="number" min="500" step="50"
+                  value={depositKes}
+                  onChange={(e) => setDepositKes(e.target.value)}
+                  placeholder="Amount in KES"
+                  className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                />
+                <div className="text-xs text-muted-foreground">
+                  ≈ ${(Number(depositKes) / 130 - 1).toFixed(2)} USD credited after $1 fee · min KES 500
+                </div>
                 <div className="text-xs text-muted-foreground">Card, M-Pesa and Bank Transfer available</div>
                 <Button onClick={startPaystackDeposit} disabled={busy} className="w-full">
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay with Paystack"}
