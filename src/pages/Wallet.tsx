@@ -225,18 +225,30 @@ const Wallet = () => {
         )}
 
         {paystackUrl && !cryptoPay && (
-          <div className="fixed inset-0 z-50 flex flex-col bg-background">
-            <div className="flex items-center justify-between px-4 py-3 border-b">
-              <div className="font-semibold">Complete payment</div>
-              <div className="flex gap-2">
-                <Button onClick={verifyPaystack} disabled={busy} size="sm">
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "I've paid"}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => { setPaystackUrl(null); setPaystackId(null); }}>Cancel</Button>
-              </div>
+          <Card className="p-4 space-y-3">
+            <div className="font-semibold">Complete your payment</div>
+            <p className="text-sm text-muted-foreground">Tap below — Paystack opens as a popup showing Card, M-Pesa and Bank options.</p>
+            <Button onClick={() => {
+              const w = window as any;
+              const pop = w.PaystackPop;
+              if (!pop) { window.open(paystackUrl!, "_blank"); return; }
+              const handler = pop.setup({
+                key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
+                authorization_url: paystackUrl,
+                callback: () => { verifyPaystack(); },
+                onClose: () => { toast("Payment window closed. Tap verify if you completed payment."); },
+              });
+              handler.openIframe();
+            }} className="w-full" disabled={busy}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Open Paystack Checkout"}
+            </Button>
+            <div className="flex gap-2">
+              <Button onClick={verifyPaystack} disabled={busy} variant="outline" className="flex-1">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "I've paid — verify"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { setPaystackUrl(null); setPaystackId(null); }}>Cancel</Button>
             </div>
-            <iframe src={paystackUrl} className="flex-1 w-full border-none" allow="payment" />
-          </div>
+          </Card>
         )}
 
         {!cryptoPay && !paystackUrl && (
