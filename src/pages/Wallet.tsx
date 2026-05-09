@@ -35,6 +35,8 @@ const Wallet = () => {
   const [withdrawUsd, setWithdrawUsd] = useState("5");
   const [wMethod, setWMethod] = useState("crypto");
   const [wDest, setWDest] = useState("");
+  const [depositKes, setDepositKes] = useState("650");
+  const KES_PER_USD = 130;
 
   const scrollTop = () => topRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -125,8 +127,10 @@ const Wallet = () => {
   };
 
   const startPaystackDeposit = async (channel: "card" | "bank" | "mobile_money") => {
-    const usd = parseFloat(depositUsd);
-    if (!(usd >= 5)) { toast.error("Min $5"); return; }
+    const usd = channel === "mobile_money"
+      ? parseFloat((Number(depositKes) / KES_PER_USD).toFixed(2))
+      : parseFloat(depositUsd);
+    if (!(usd >= 5)) { toast.error(channel === "mobile_money" ? "Min KES 650" : "Min $5"); return; }
     setBusy(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
