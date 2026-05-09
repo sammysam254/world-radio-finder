@@ -48,38 +48,30 @@ Deno.serve(async (req) => {
 
       const supa = createClient(SUPA_URL, SVC);
       const grossCents = Math.round(usd * 100);
-      const feeCents = 100;
 
       const { data: payRow, error: insErr } = await supa.from("wallet_payments").insert({
         user_id: user.id, provider: "paystack", kind: "deposit",
-        amount_usd_cents: grossCents, fee_cents: feeCents, net_cents: grossCents - feeCents,
+        amount_usd_cents: grossCents, fee_cents: 100, net_cents: grossCents - 100,
         pay_currency: "kes", pay_network: "all", status: "pending",
       }).select().single();
       if (insErr) return json({ error: insErr.message }, 500);
 
-      // Amount in KES smallest unit (cents) — must be integer
-      const amountKes = Math.round(usd * KES_PER_USD);
-      const amountKobo = amountKes * 100; // KES cents
+      // KES amount in smallest unit (cents) — must be whole integer, NO currency field (defaults to account currency)
+      const amountKobo = Math.round(usd * KES_PER_USD) * 100;
 
-      // Use timestamp in reference to ensure uniqueness
-      const reference = payRow.id.replace(/-/g, "").slice(0, 20) + Date.now().toString().slice(-8);
-
-      const payload = {
-        email: user.email,
-        amount: amountKobo,
-        currency: "KES",
-        reference,
-        metadata: { payment_id: payRow.id, user_id: user.id, amount_usd: usd },
-      };
-
-      console.log("Paystack payload:", JSON.stringify(payload));
+      // Unique reference using payment id + timestamp
+      const reference = payRow.id.replace(/-/g, "").slice(0, 16) + Date.now().toString().slice(-10);
 
       const r = await ps("/transaction/initialize", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          email: user.email,
+          amount: amountKobo,
+          reference,
+          callback_url: "https://wavebox.site/wallet",
+          metadata: { payment_id: payRow.id, user_id: user.id, amount_usd: usd },
+        }),
       });
-
-      console.log("Paystack response:", JSON.stringify(r.body));
 
       if (!r.ok || !r.body?.status) {
         await supa.from("wallet_payments").update({ status: "failed", raw: r.body }).eq("id", payRow.id);
@@ -93,7 +85,13 @@ Deno.serve(async (req) => {
         expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
       }).eq("id", payRow.id);
 
-      return json({ id: payRow.id, authorization_url: r.body.data.authorization_url, reference });
+      // Return both access_code (for popup) and authorization_url (fallback)
+      return json({
+        id: payRow.id,
+        access_code: r.body.data.access_code,
+        authorization_url: r.body.data.authorization_url,
+        reference,
+      });
     }
 
     if (action === "verify") {

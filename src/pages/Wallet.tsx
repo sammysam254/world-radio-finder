@@ -161,16 +161,24 @@ const Wallet = () => {
       const w = window as any;
       if (!w.PaystackPop) throw new Error("Paystack failed to load. Check your internet connection.");
       const data = await callFn("paystack", { amount_usd: usd }, session.access_token);
-      if (!data.authorization_url) throw new Error("No payment URL returned");
+      if (!data.access_code && !data.authorization_url) throw new Error("No payment data returned");
       setPaystackId(data.id);
       setPaystackReady(true);
       scrollTop();
-      w.PaystackPop.setup({
-        key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
-        authorization_url: data.authorization_url,
-        callback: () => { verifyPaystackById(data.id); },
-        onClose: () => {},
-      }).openIframe();
+      // Use access_code with resumeTransaction (correct Paystack Popup v2 flow)
+      if (data.access_code) {
+        w.PaystackPop.resumeTransaction(data.access_code, {
+          onSuccess: () => { verifyPaystackById(data.id); },
+          onCancel: () => {},
+        });
+      } else {
+        w.PaystackPop.setup({
+          key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
+          authorization_url: data.authorization_url,
+          callback: () => { verifyPaystackById(data.id); },
+          onClose: () => {},
+        }).openIframe();
+      }
     } catch (e: any) { toast.error(e.message || "Failed"); }
     finally { setBusy(false); }
   };
