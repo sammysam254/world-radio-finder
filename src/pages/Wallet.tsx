@@ -142,12 +142,11 @@ const Wallet = () => {
     finally { setBusy(false); }
   };
 
-  const verifyPaystack = async () => {
-    if (!paystackId) return;
+  const verifyPaystackById = async (id: string) => {
     setBusy(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const r = await fetch(`${SUPA_URL}/functions/v1/paystack?action=verify&id=${paystackId}`, {
+      const r = await fetch(`${SUPA_URL}/functions/v1/paystack?action=verify&id=${id}`, {
         headers: { apikey: SUPA_KEY, Authorization: `Bearer ${session?.access_token ?? SUPA_KEY}` },
       });
       const j = await r.json();
@@ -161,6 +160,8 @@ const Wallet = () => {
     } catch (e: any) { toast.error(e.message || "Failed"); }
     finally { setBusy(false); }
   };
+
+  const verifyPaystack = async () => { if (paystackId) verifyPaystackById(paystackId); };
 
   const requestWithdraw = async () => {
     if (!uid) return;
