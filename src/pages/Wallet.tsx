@@ -161,7 +161,7 @@ const Wallet = () => {
       const w = window as any;
       if (!w.PaystackPop) throw new Error("Paystack failed to load. Check your internet connection.");
       const data = await callFn("paystack", { amount_usd: usd }, session.access_token);
-      if (!data.access_code) throw new Error("No access code returned from server");
+      if (!data.access_code) throw new Error(data.error || data.details?.message || "No access code: " + JSON.stringify(data));
       setPaystackId(data.id);
       setPaystackReady(true);
       scrollTop();
