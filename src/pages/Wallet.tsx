@@ -233,7 +233,7 @@ const Wallet = () => {
               const pop = w.PaystackPop;
               if (!pop) { window.open(paystackUrl!, "_blank"); return; }
               const handler = pop.setup({
-                key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
+                key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || (window as any).__PAYSTACK_KEY__ || "",
                 authorization_url: paystackUrl,
                 callback: () => { verifyPaystack(); },
                 onClose: () => { toast("Payment window closed. Tap verify if you completed payment."); },
