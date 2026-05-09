@@ -36,6 +36,8 @@ const Wallet = () => {
   const [wMethod, setWMethod] = useState("crypto");
   const [wDest, setWDest] = useState("");
   const [depositKes, setDepositKes] = useState("650");
+  const [depositTab, setDepositTab] = useState("crypto");
+  const [paystackTab, setPaystackTab] = useState("card");
   const KES_PER_USD = 130;
 
   const scrollTop = () => topRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -268,7 +270,7 @@ const Wallet = () => {
 
         <Card className="p-4 space-y-2">
           <div className="font-semibold">Withdraw</div>
-          <div className="text-xs text-muted-foreground">Withdrawals require admin approval (1–2 days).</div>
+          <div className="text-xs text-muted-foreground">M-Pesa/bank withdrawals sent instantly. Crypto within 24hrs. $1 fee applies.</div>
           <Input type="number" min="1" step="1" value={withdrawUsd} onChange={(e) => setWithdrawUsd(e.target.value)} placeholder="Amount USD" />
           <select value={wMethod} onChange={(e) => setWMethod(e.target.value)} className="w-full h-10 rounded-md border bg-background px-2 text-sm">
             <option value="crypto">Crypto (USDT)</option>
