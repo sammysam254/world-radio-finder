@@ -159,7 +159,7 @@ const Wallet = () => {
       const w = window as any;
       if (!w.PaystackPop) throw new Error("Paystack script failed to load");
 
-      const data = await callFn("paystack", { amount_kes: kes }, session.access_token);
+      const data = await callFn("paystack", { amount_kes: kes, amount_usd: kes / 130 }, session.access_token);
       if (!data.access_code && !data.authorization_url) throw new Error(data.error || "No payment data returned");
 
       setPaystackPayId(data.id);
