@@ -31,7 +31,7 @@ const Wallet = () => {
   const [paystackDone, setPaystackDone] = useState(false);
   const [paystackPayId, setPaystackPayId] = useState<string | null>(null);
   const [withdrawUsd, setWithdrawUsd] = useState("5");
-  const [wMethod, setWMethod] = useState("mobile_money");
+  const [wMethod, setWMethod] = useState("bank");
   const [wDest, setWDest] = useState("");
   const [wResult, setWResult] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -272,7 +272,7 @@ const Wallet = () => {
               </button>
               <button onClick={() => setDepositTab("paystack")}
                 className={`rounded-md py-2 text-xs font-medium transition-colors ${depositTab === "paystack" ? "bg-background shadow text-foreground" : "text-muted-foreground"}`}>
-                💳 Pay with Paystack
+                💳 Pay with Card
               </button>
             </div>
 
@@ -298,9 +298,9 @@ const Wallet = () => {
                 <div className="text-xs text-muted-foreground">
                   ≈ ${Math.max(0, Number(depositKes) / 130 - 1).toFixed(2)} USD credited after $1 fee · min KES 500
                 </div>
-                <div className="text-xs text-muted-foreground">Card, M-Pesa and Bank Transfer available</div>
+                <div className="text-xs text-muted-foreground">Visa & Mastercard accepted</div>
                 <Button onClick={startPaystackDeposit} disabled={busy} className="w-full">
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay with Paystack"}
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay with Card"}
                 </Button>
               </div>
             )}
@@ -314,7 +314,6 @@ const Wallet = () => {
           </div>
           <Input type="number" min="1" step="1" value={withdrawUsd} onChange={(e) => setWithdrawUsd(e.target.value)} placeholder="Amount in USD" />
           <select value={wMethod} onChange={(e) => { setWMethod(e.target.value); setWResult(null); }} className="w-full h-10 rounded-md border bg-background px-2 text-sm">
-            <option value="mobile_money">📱 M-Pesa</option>
             <option value="bank">🏦 Bank account</option>
             <option value="crypto">🔗 Crypto (USDT)</option>
           </select>
