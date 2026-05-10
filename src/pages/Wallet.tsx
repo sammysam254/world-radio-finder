@@ -167,19 +167,23 @@ const Wallet = () => {
       scrollTop();
 
       // Open Paystack popup using access_code
-      const popup = new w.PaystackPop();
-      if (data.access_code) {
-        popup.resumeTransaction(data.access_code, {
+      // Try all Paystack popup methods
+      const key = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "";
+      if (data.access_code && w.PaystackPop?.resumeTransaction) {
+        w.PaystackPop.resumeTransaction(data.access_code, {
           onSuccess: () => verifyPaystack(data.id),
           onCancel: () => {},
         });
-      } else {
-        popup.newTransaction({
-          key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
+      } else if (w.PaystackPop?.newTransaction) {
+        w.PaystackPop.newTransaction({
+          key,
           authorization_url: data.authorization_url,
           onSuccess: () => verifyPaystack(data.id),
           onCancel: () => {},
         });
+      } else {
+        // Final fallback — open URL directly
+        window.location.href = data.authorization_url;
       }
     } catch (e: any) { toast.error(e.message || "Failed"); setBusy(false); return; }
     setBusy(false);
