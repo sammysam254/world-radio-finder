@@ -10,15 +10,15 @@ type Msg = { role: "user" | "assistant"; content: string };
 
 const SUGGESTIONS = [
   "How do I deposit?",
-  "What payment methods are available?",
-  "How do I listen to radio?",
+  "What payment methods?",
+  "How to listen to radio?",
   "What is Wavebox?",
 ];
 
 const Chatbot = () => {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([
-    { role: "assistant", content: "Hi! I am the Wavebox Assistant 👋 I can help you with anything — radio, TV, payments, account and more. What would you like to know?" }
+    { role: "assistant", content: "Hi! I am the Wavebox Assistant 👋 Ask me anything about radio, TV, payments, your account and more!" }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -64,22 +64,15 @@ const Chatbot = () => {
     fetch(`${SUPA_URL}/functions/v1/chatbot`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: SUPA_KEY },
-      body: JSON.stringify({
-        action: "feedback",
-        question: userMsg.content,
-        answer: assistantMsg.content,
-        helpful,
-      }),
+      body: JSON.stringify({ action: "feedback", question: userMsg.content, answer: assistantMsg.content, helpful }),
     }).catch(() => {});
   };
 
   return (
     <>
-      {/* Floating button */}
       <button
         onClick={() => setOpen(o => !o)}
         className="fixed bottom-6 right-4 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-xl flex items-center justify-center hover:scale-110 transition-transform"
-        aria-label="Open chat"
       >
         {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
       </button>
@@ -89,7 +82,6 @@ const Chatbot = () => {
           className="fixed bottom-24 right-4 z-50 flex flex-col bg-background border rounded-2xl shadow-2xl overflow-hidden"
           style={{ width: "min(340px, calc(100vw - 2rem))", height: "520px" }}
         >
-          {/* Header */}
           <div className="flex items-center gap-3 px-4 py-3 bg-primary text-primary-foreground shrink-0">
             <div className="w-8 h-8 rounded-full bg-primary-foreground/20 flex items-center justify-center">
               <MessageCircle className="h-4 w-4" />
@@ -98,12 +90,11 @@ const Chatbot = () => {
               <div className="font-semibold text-sm">Wavebox Assistant</div>
               <div className="text-xs opacity-75 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-green-400 rounded-full inline-block" />
-                Online · Learning from every chat
+                Online · Learns from every chat
               </div>
             </div>
           </div>
 
-          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {msgs.map((m, i) => (
               <div key={i} className={`flex flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}>
@@ -117,16 +108,10 @@ const Chatbot = () => {
                 {m.role === "assistant" && i > 0 && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Helpful?</span>
-                    <button
-                      onClick={() => giveFeedback(i, true)}
-                      className={`p-1 rounded transition-colors ${feedback[i] === "up" ? "text-green-500" : "text-muted-foreground hover:text-green-500"}`}
-                    >
+                    <button onClick={() => giveFeedback(i, true)} className={`p-1 rounded transition-colors ${feedback[i] === "up" ? "text-green-500" : "text-muted-foreground hover:text-green-500"}`}>
                       <ThumbsUp className="h-3 w-3" />
                     </button>
-                    <button
-                      onClick={() => giveFeedback(i, false)}
-                      className={`p-1 rounded transition-colors ${feedback[i] === "down" ? "text-red-500" : "text-muted-foreground hover:text-red-500"}`}
-                    >
+                    <button onClick={() => giveFeedback(i, false)} className={`p-1 rounded transition-colors ${feedback[i] === "down" ? "text-red-500" : "text-muted-foreground hover:text-red-500"}`}>
                       <ThumbsDown className="h-3 w-3" />
                     </button>
                   </div>
@@ -136,50 +121,37 @@ const Chatbot = () => {
 
             {loading && (
               <div className="flex items-start">
-                <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-2 flex items-center gap-2">
-                  <div className="flex gap-1">
-                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                  </div>
+                <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
+                  <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                 </div>
               </div>
             )}
 
-            {/* Suggestions */}
             {showSuggestions && msgs.length === 1 && (
               <div className="flex flex-wrap gap-2 pt-1">
                 {SUGGESTIONS.map(s => (
-                  <button
-                    key={s}
-                    onClick={() => send(s)}
-                    className="text-xs border rounded-full px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                  >
+                  <button key={s} onClick={() => send(s)}
+                    className="text-xs border rounded-full px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
                     {s}
                   </button>
                 ))}
               </div>
             )}
-
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
           <div className="p-3 border-t flex gap-2 shrink-0">
             <Input
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
+              onKeyDown={e => e.key === "Enter" && send()}
               placeholder="Ask anything..."
               className="text-sm"
               disabled={loading}
             />
-            <Button
-              size="icon"
-              onClick={() => send()}
-              disabled={loading || !input.trim()}
-              className="shrink-0"
-            >
+            <Button size="icon" onClick={() => send()} disabled={loading || !input.trim()} className="shrink-0">
               <Send className="h-4 w-4" />
             </Button>
           </div>
