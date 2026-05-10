@@ -246,7 +246,7 @@ const Wallet = () => {
               <div className="space-y-2">
                 <label className="text-xs text-muted-foreground">Amount in USD</label>
                 <Input type="number" min="5" step="1" value={depositUsd} onChange={(e) => setDepositUsd(e.target.value)} placeholder="Amount in USD" />
-                <div className="text-xs text-muted-foreground">Min $10 · 2% fee · balance credited in USD</div>
+                <div className="text-xs text-muted-foreground">{isAdmin ? "No minimum (admin)" : "Min $10"} · 2% fee · You receive: ${Math.max(0, Number(depositUsd) - Number(depositUsd) * 0.02).toFixed(2)} USD</div>
                 <label className="text-xs text-muted-foreground">Select network</label>
                 <select value={chosenCrypto} onChange={(e) => setChosenCrypto(e.target.value)} className="w-full h-10 rounded-md border bg-background px-2 text-sm">
                   {cryptos.map(c => <option key={c.code} value={c.code}>USDT — {c.network}</option>)}
@@ -261,7 +261,7 @@ const Wallet = () => {
               <div className="space-y-2">
                 <label className="text-xs text-muted-foreground">Amount in USD</label>
                 <Input type="number" min="5" step="1" value={depositUsd} onChange={(e) => setDepositUsd(e.target.value)} placeholder="Amount in USD" />
-                <div className="text-xs text-muted-foreground">Min $10 · 4% fee · Visa & Mastercard accepted</div>
+                <div className="text-xs text-muted-foreground">{isAdmin ? "No minimum (admin)" : "Min $10"} · 4% fee · You receive: ${Math.max(0, Number(depositUsd) - Number(depositUsd) * 0.04).toFixed(2)} USD</div>
                 <Button onClick={startPaystackDeposit} disabled={busy} className="w-full">
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay with Card"}
                 </Button>

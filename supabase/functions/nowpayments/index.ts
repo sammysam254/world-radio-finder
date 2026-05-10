@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
       const usd = Number(body.amount_usd);
       const pay_currency = String(body.pay_currency || "");
       const isAdmin = body.is_admin === true;
-      if (!isAdmin && !(usd >= 10)) return json({ error: "Minimum deposit is $10" }, 400);
+      if (!isAdmin && usd < 10) return json({ error: "Minimum deposit is $10" }, 400);
       if (!pay_currency) return json({ error: "pay_currency required" }, 400);
 
       const supa = createClient(SUPA_URL, SVC);
