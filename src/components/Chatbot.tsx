@@ -6,26 +6,37 @@ import { MessageCircle, X, Send, Loader2, ThumbsUp, ThumbsDown } from "lucide-re
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
-type Message = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant"; content: string };
+
+const SUGGESTIONS = [
+  "How do I deposit?",
+  "What payment methods are available?",
+  "How do I listen to radio?",
+  "What is Wavebox?",
+];
 
 const Chatbot = () => {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "Hi! I'm the Wavebox Assistant 👋 Ask me anything about the app — radio, TV, wallet, payments or anything else!" }
+  const [msgs, setMsgs] = useState<Msg[]>([
+    { role: "assistant", content: "Hi! I am the Wavebox Assistant 👋 I can help you with anything — radio, TV, payments, account and more. What would you like to know?" }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<Record<number, "up" | "down">>({});
+  const [showSuggestions, setShowSuggestions] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, open]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [msgs, open]);
 
-  const send = async () => {
-    const msg = input.trim();
+  const send = async (message?: string) => {
+    const msg = (message || input).trim();
     if (!msg || loading) return;
     setInput("");
-    const history = messages.map(m => ({ role: m.role, content: m.content }));
-    setMessages(prev => [...prev, { role: "user", content: msg }]);
+    setShowSuggestions(false);
+    const history = msgs.map(m => ({ role: m.role, content: m.content }));
+    setMsgs(prev => [...prev, { role: "user", content: msg }]);
     setLoading(true);
     try {
       const res = await fetch(`${SUPA_URL}/functions/v1/chatbot`, {
@@ -34,77 +45,142 @@ const Chatbot = () => {
         body: JSON.stringify({ action: "chat", message: msg, history }),
       });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: "assistant", content: data.reply || "Sorry, something went wrong." }]);
+      setMsgs(prev => [...prev, {
+        role: "assistant",
+        content: data.reply || data.error || "Sorry, something went wrong."
+      }]);
     } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "Sorry, I am having trouble connecting. Please try again." }]);
+      setMsgs(prev => [...prev, { role: "assistant", content: "Connection error. Please try again." }]);
     }
     setLoading(false);
   };
 
-  const sendFeedback = async (index: number, helpful: boolean) => {
+  const giveFeedback = async (index: number, helpful: boolean) => {
     if (feedback[index]) return;
     setFeedback(prev => ({ ...prev, [index]: helpful ? "up" : "down" }));
-    const assistantMsg = messages[index];
-    const userMsg = messages[index - 1];
+    const assistantMsg = msgs[index];
+    const userMsg = msgs[index - 1];
     if (!assistantMsg || !userMsg) return;
-    await fetch(`${SUPA_URL}/functions/v1/chatbot`, {
+    fetch(`${SUPA_URL}/functions/v1/chatbot`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: SUPA_KEY },
-      body: JSON.stringify({ action: "feedback", question: userMsg.content, answer: assistantMsg.content, helpful }),
+      body: JSON.stringify({
+        action: "feedback",
+        question: userMsg.content,
+        answer: assistantMsg.content,
+        helpful,
+      }),
     }).catch(() => {});
   };
 
   return (
     <>
-      <button onClick={() => setOpen(o => !o)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 transition-transform">
+      {/* Floating button */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="fixed bottom-6 right-4 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-xl flex items-center justify-center hover:scale-110 transition-transform"
+        aria-label="Open chat"
+      >
         {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
       </button>
 
       {open && (
-        <div className="fixed bottom-24 right-4 z-50 w-[340px] max-w-[calc(100vw-2rem)] bg-background border rounded-2xl shadow-2xl flex flex-col" style={{ height: "480px" }}>
-          <div className="flex items-center gap-2 px-4 py-3 border-b bg-primary text-primary-foreground rounded-t-2xl">
-            <MessageCircle className="h-5 w-5" />
+        <div
+          className="fixed bottom-24 right-4 z-50 flex flex-col bg-background border rounded-2xl shadow-2xl overflow-hidden"
+          style={{ width: "min(340px, calc(100vw - 2rem))", height: "520px" }}
+        >
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 py-3 bg-primary text-primary-foreground shrink-0">
+            <div className="w-8 h-8 rounded-full bg-primary-foreground/20 flex items-center justify-center">
+              <MessageCircle className="h-4 w-4" />
+            </div>
             <div>
               <div className="font-semibold text-sm">Wavebox Assistant</div>
-              <div className="text-xs opacity-75">Ask me anything</div>
+              <div className="text-xs opacity-75 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full inline-block" />
+                Online · Learning from every chat
+              </div>
             </div>
           </div>
 
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {messages.map((m, i) => (
-              <div key={i} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
-                <div className={`rounded-2xl px-3 py-2 text-sm max-w-[85%] ${m.role === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm"}`}>
+            {msgs.map((m, i) => (
+              <div key={i} className={`flex flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}>
+                <div className={`rounded-2xl px-3 py-2 text-sm max-w-[85%] leading-relaxed ${
+                  m.role === "user"
+                    ? "bg-primary text-primary-foreground rounded-br-sm"
+                    : "bg-muted text-foreground rounded-bl-sm"
+                }`}>
                   {m.content}
                 </div>
                 {m.role === "assistant" && i > 0 && (
-                  <div className="flex gap-1 mt-1">
-                    <button onClick={() => sendFeedback(i, true)} className={`p-1 rounded-full transition-colors ${feedback[i] === "up" ? "text-green-500" : "text-muted-foreground hover:text-green-500"}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Helpful?</span>
+                    <button
+                      onClick={() => giveFeedback(i, true)}
+                      className={`p-1 rounded transition-colors ${feedback[i] === "up" ? "text-green-500" : "text-muted-foreground hover:text-green-500"}`}
+                    >
                       <ThumbsUp className="h-3 w-3" />
                     </button>
-                    <button onClick={() => sendFeedback(i, false)} className={`p-1 rounded-full transition-colors ${feedback[i] === "down" ? "text-red-500" : "text-muted-foreground hover:text-red-500"}`}>
+                    <button
+                      onClick={() => giveFeedback(i, false)}
+                      className={`p-1 rounded transition-colors ${feedback[i] === "down" ? "text-red-500" : "text-muted-foreground hover:text-red-500"}`}
+                    >
                       <ThumbsDown className="h-3 w-3" />
                     </button>
                   </div>
                 )}
               </div>
             ))}
+
             {loading && (
               <div className="flex items-start">
-                <div className="bg-muted rounded-2xl rounded-bl-sm px-3 py-2 flex items-center gap-1">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  <span className="text-muted-foreground text-xs">Typing...</span>
+                <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-2 flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* Suggestions */}
+            {showSuggestions && msgs.length === 1 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {SUGGESTIONS.map(s => (
+                  <button
+                    key={s}
+                    onClick={() => send(s)}
+                    className="text-xs border rounded-full px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div ref={bottomRef} />
           </div>
 
-          <div className="p-3 border-t flex gap-2">
-            <Input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
-              placeholder="Ask something..." className="text-sm" disabled={loading} />
-            <Button size="icon" onClick={send} disabled={loading || !input.trim()} className="shrink-0">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          {/* Input */}
+          <div className="p-3 border-t flex gap-2 shrink-0">
+            <Input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
+              placeholder="Ask anything..."
+              className="text-sm"
+              disabled={loading}
+            />
+            <Button
+              size="icon"
+              onClick={() => send()}
+              disabled={loading || !input.trim()}
+              className="shrink-0"
+            >
+              <Send className="h-4 w-4" />
             </Button>
           </div>
         </div>
