@@ -31,10 +31,6 @@ const Wallet = () => {
   const [paystackDone, setPaystackDone] = useState(false);
   const [paystackIframeUrl, setPaystackIframeUrl] = useState<string | null>(null);
   const [paystackPayId, setPaystackPayId] = useState<string | null>(null);
-  const [withdrawUsd, setWithdrawUsd] = useState("5");
-  const [wMethod, setWMethod] = useState("bank");
-  const [wDest, setWDest] = useState("");
-  const [wResult, setWResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const scrollTop = () => topRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -174,32 +170,6 @@ const Wallet = () => {
     setBusy(false);
   };
 
-  const requestWithdraw = async () => {
-    if (!uid) return;
-    const usd = parseFloat(withdrawUsd);
-    if (!(usd >= 1)) { toast.error("Minimum withdrawal is $1"); return; }
-    if (!wDest.trim()) { toast.error("Provide destination details"); return; }
-    setBusy(true); setWResult(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not logged in");
-      if (wMethod === "crypto") {
-        const cents = Math.round(usd * 100);
-        await supabase.from("wallet_transactions").insert({ user_id: uid, kind: "withdrawal", amount_cents: -cents, status: "pending", note: `Crypto withdrawal: ${wDest}` });
-        await supabase.rpc("adjust_wallet", { _user_id: uid, _delta_cents: -cents });
-        await supabase.from("wallet_payments").insert({ user_id: uid, provider: "nowpayments", kind: "withdrawal", amount_usd_cents: cents, net_cents: cents, fee_cents: 0, pay_network: "crypto", status: "pending", destination: { method: "crypto", details: wDest } });
-        setWResult({ ok: true, message: "Crypto withdrawal submitted. Processed within 24 hours." });
-      } else {
-        const data = await callFn("paystack-transfer", { action: "withdraw", amount_usd: usd, method: wMethod, details: wDest }, session.access_token);
-        setWResult({ ok: true, message: data.message || "Withdrawal sent!" });
-        load(uid);
-      }
-      setWDest("");
-    } catch (e: any) {
-      setWResult({ ok: false, message: e.message || "Failed" });
-    }
-    finally { setBusy(false); }
-  };
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6">
@@ -296,29 +266,6 @@ const Wallet = () => {
             )}
           </Card>
         )}
-
-        <Card className="p-4 space-y-3">
-          <div>
-            <div className="font-semibold">Withdraw</div>
-            <div className="text-xs text-muted-foreground">M-Pesa/bank sent instantly · Crypto within 24hrs · $1 fee</div>
-          </div>
-          <Input type="number" min="1" step="1" value={withdrawUsd} onChange={(e) => setWithdrawUsd(e.target.value)} placeholder="Amount in USD" />
-          <select value={wMethod} onChange={(e) => { setWMethod(e.target.value); setWResult(null); }} className="w-full h-10 rounded-md border bg-background px-2 text-sm">
-            <option value="bank">🏦 Bank account</option>
-            <option value="crypto">🔗 Crypto (USDT)</option>
-          </select>
-          <Input value={wDest} onChange={(e) => setWDest(e.target.value)}
-            placeholder={wMethod === "crypto" ? "USDT address + network" : wMethod === "mobile_money" ? "M-Pesa phone (e.g. 0712345678)" : "bank_code|account_number"} />
-          {wResult && (
-            <div className={`text-sm rounded p-2 ${wResult.ok ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
-              {wResult.ok ? "✅ " : "❌ "}{wResult.message}
-              {!wResult.ok && <div className="text-xs mt-1 text-muted-foreground">If this keeps failing, try again in 1 hour or contact support.</div>}
-            </div>
-          )}
-          <Button onClick={requestWithdraw} disabled={busy} className="w-full">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : wMethod === "crypto" ? "Submit withdrawal" : "Send now via Paystack"}
-          </Button>
-        </Card>
 
         <Card className="p-4">
           <div className="font-semibold mb-2">Recent transactions</div>
