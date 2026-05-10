@@ -29,6 +29,7 @@ const Wallet = () => {
   const [cryptoPay, setCryptoPay] = useState<CryptoPayment | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [paystackDone, setPaystackDone] = useState(false);
+  const [paystackIframeUrl, setPaystackIframeUrl] = useState<string | null>(null);
   const [paystackPayId, setPaystackPayId] = useState<string | null>(null);
   const [withdrawUsd, setWithdrawUsd] = useState("5");
   const [wMethod, setWMethod] = useState("bank");
@@ -167,24 +168,8 @@ const Wallet = () => {
       scrollTop();
 
       // Open Paystack popup using access_code
-      // Try all Paystack popup methods
-      const key = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "";
-      if (data.access_code && w.PaystackPop?.resumeTransaction) {
-        w.PaystackPop.resumeTransaction(data.access_code, {
-          onSuccess: () => verifyPaystack(data.id),
-          onCancel: () => {},
-        });
-      } else if (w.PaystackPop?.newTransaction) {
-        w.PaystackPop.newTransaction({
-          key,
-          authorization_url: data.authorization_url,
-          onSuccess: () => verifyPaystack(data.id),
-          onCancel: () => {},
-        });
-      } else {
-        // Final fallback — open URL directly
-        window.location.href = data.authorization_url;
-      }
+      // Store URL for iframe display
+      setPaystackIframeUrl(data.authorization_url);
     } catch (e: any) { toast.error(e.message || "Failed"); setBusy(false); return; }
     setBusy(false);
   };
@@ -250,15 +235,23 @@ const Wallet = () => {
           </Card>
         )}
 
-        {paystackDone && !cryptoPay && (
-          <Card className="p-4 space-y-3">
-            <div className="font-semibold">Complete your payment</div>
-            <p className="text-sm text-muted-foreground">The Paystack popup should be open. If closed, tap verify after paying.</p>
-            <Button onClick={() => { if (paystackPayId) verifyPaystack(paystackPayId); }} disabled={busy} className="w-full">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "I have paid — verify"}
-            </Button>
-            <Button variant="ghost" size="sm" className="w-full" onClick={() => { setPaystackDone(false); setPaystackPayId(null); }}>Cancel</Button>
-          </Card>
+        {paystackDone && paystackIframeUrl && !cryptoPay && (
+          <div className="fixed inset-0 z-50 flex flex-col bg-background">
+            <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+              <span className="font-semibold text-sm">Card Payment</span>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => { if (paystackPayId) verifyPaystack(paystackPayId); }} disabled={busy}>
+                  {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : "I've paid"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setPaystackDone(false); setPaystackPayId(null); setPaystackIframeUrl(null); }}>✕</Button>
+              </div>
+            </div>
+            <iframe
+              src={paystackIframeUrl}
+              className="flex-1 w-full border-none"
+              allow="payment"
+            />
+          </div>
         )}
 
         {!cryptoPay && !paystackDone && (
