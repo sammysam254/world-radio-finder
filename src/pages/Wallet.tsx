@@ -23,6 +23,7 @@ const Wallet = () => {
   const [cryptos, setCryptos] = useState<CryptoOpt[]>([]);
   const [chosenCrypto, setChosenCrypto] = useState("");
   const [busy, setBusy] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [depositTab, setDepositTab] = useState<"crypto" | "paystack">("crypto");
   const [depositUsd, setDepositUsd] = useState("5");
   const [depositKes, setDepositKes] = useState("650");
@@ -58,6 +59,8 @@ const Wallet = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { nav("/auth", { replace: true }); return; }
       setUid(session.user.id);
+      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id);
+      setIsAdmin(!!roles?.some((r: any) => r.role === "admin"));
       const { data: existing } = await supabase.from("wallets").select("user_id").eq("user_id", session.user.id).maybeSingle();
       if (!existing) await supabase.from("wallets").insert({ user_id: session.user.id, balance_cents: 0 });
       load(session.user.id);
@@ -102,13 +105,13 @@ const Wallet = () => {
 
   const startCryptoDeposit = async () => {
     const usd = parseFloat(depositUsd);
-    if (!(usd >= 5)) { toast.error("Min $5"); return; }
+    if (!(usd >= 10) && !isAdmin) { toast.error("Min $10"); return; }
     if (!chosenCrypto) { toast.error("Select a network"); return; }
     setBusy(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not logged in");
-      const data = await callFn("nowpayments", { amount_usd: usd, pay_currency: chosenCrypto }, session.access_token);
+      const data = await callFn("nowpayments", { amount_usd: usd, pay_currency: chosenCrypto, is_admin: isAdmin }, session.access_token);
       if (!data.pay_address) throw new Error("No payment address returned");
       setCryptoPay(data); scrollTop();
     } catch (e: any) { toast.error(e.message || "Failed"); }
@@ -156,7 +159,7 @@ const Wallet = () => {
       const w = window as any;
       if (!w.PaystackPop) throw new Error("Paystack script failed to load");
 
-      const data = await callFn("paystack", { amount_kes: kes, amount_usd: kes / 130 }, session.access_token);
+      const data = await callFn("paystack", { amount_kes: kes, amount_usd: kes / 130, is_admin: isAdmin }, session.access_token);
       if (!data.access_code && !data.authorization_url) throw new Error(data.error || "No payment data returned");
 
       setPaystackPayId(data.id);
@@ -243,7 +246,7 @@ const Wallet = () => {
               <div className="space-y-2">
                 <label className="text-xs text-muted-foreground">Amount in USD</label>
                 <Input type="number" min="5" step="1" value={depositUsd} onChange={(e) => setDepositUsd(e.target.value)} placeholder="Amount in USD" />
-                <div className="text-xs text-muted-foreground">Min $5 · 2% fee · balance credited in USD</div>
+                <div className="text-xs text-muted-foreground">Min $10 · 2% fee · balance credited in USD</div>
                 <label className="text-xs text-muted-foreground">Select network</label>
                 <select value={chosenCrypto} onChange={(e) => setChosenCrypto(e.target.value)} className="w-full h-10 rounded-md border bg-background px-2 text-sm">
                   {cryptos.map(c => <option key={c.code} value={c.code}>USDT — {c.network}</option>)}
@@ -258,7 +261,7 @@ const Wallet = () => {
               <div className="space-y-2">
                 <label className="text-xs text-muted-foreground">Amount in USD</label>
                 <Input type="number" min="5" step="1" value={depositUsd} onChange={(e) => setDepositUsd(e.target.value)} placeholder="Amount in USD" />
-                <div className="text-xs text-muted-foreground">Min $5 · 4% fee · Visa & Mastercard accepted</div>
+                <div className="text-xs text-muted-foreground">Min $10 · 4% fee · Visa & Mastercard accepted</div>
                 <Button onClick={startPaystackDeposit} disabled={busy} className="w-full">
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay with Card"}
                 </Button>
