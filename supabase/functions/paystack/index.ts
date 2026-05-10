@@ -38,7 +38,8 @@ Deno.serve(async (req) => {
 
       // Accept amount_kes directly — user entered KES amount
       const amountKes = Math.round(Number(body.amount_kes));
-      if (!(amountKes >= 500)) return json({ error: "Minimum deposit is KES 500" }, 400);
+      const isAdmin = body.is_admin === true;
+      if (!isAdmin && amountKes < 1300) return json({ error: "Minimum deposit is $10 (KES 1300)" }, 400);
 
       // Convert to USD for wallet credit (after $1 fee)
       const usdGross = amountKes / KES_PER_USD;
