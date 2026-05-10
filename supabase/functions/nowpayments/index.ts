@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
 
       const supa = createClient(SUPA_URL, SVC);
       const grossCents = Math.round(usd * 100);
-      const feeCents = 100;
+      const feeCents = Math.round(grossCents * 0.02); // 2% fee for crypto
       const netCents = grossCents - feeCents;
 
       // Insert pending row first
