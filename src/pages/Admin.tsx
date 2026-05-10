@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Trash2, ArrowUp, ArrowDown, LogOut, Upload, Check, X, Menu, Radio, ScrollText, Star, Wallet, Users, ChevronRight } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, LogOut, Upload, Check, X, Menu, Radio, ScrollText, Star, Wallet, Users, ChevronRight, Home } from "lucide-react";
 
 type Ad = { id: string; kind: "video_file" | "video_url" | "monetag_url"; title: string; payload: string; sequence: number; active: boolean };
 type Marquee = { id: string; text: string; position: string; active: boolean; sequence: number };
@@ -167,9 +167,14 @@ const Admin = () => {
         </button>
         <ActiveIcon className="h-4 w-4 text-primary shrink-0" />
         <span className="font-semibold text-sm flex-1">{activeLabel}</span>
-        <Button variant="ghost" size="sm" onClick={signOut} className="gap-1 text-muted-foreground shrink-0">
-          <LogOut className="h-4 w-4" />
-        </Button>
+        <div className="flex gap-1 shrink-0">
+          <Button variant="ghost" size="sm" onClick={() => nav("/")} className="gap-1 text-muted-foreground">
+            <Home className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={signOut} className="gap-1 text-muted-foreground">
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Hamburger drawer */}
