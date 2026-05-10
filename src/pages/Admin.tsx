@@ -6,38 +6,39 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Trash2, ArrowUp, ArrowDown, LogOut, Upload, Check, X } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, LogOut, Upload, Check, X, Menu, Radio, ScrollText, Star, Wallet, Users, ChevronRight } from "lucide-react";
 
-type Ad = {
-  id: string;
-  kind: "video_file" | "video_url" | "monetag_url";
-  title: string; payload: string; sequence: number; active: boolean;
-};
+type Ad = { id: string; kind: "video_file" | "video_url" | "monetag_url"; title: string; payload: string; sequence: number; active: boolean };
 type Marquee = { id: string; text: string; position: string; active: boolean; sequence: number };
-type Session = { id: string; session_key: string; country: string | null; city: string | null; user_agent: string | null; started_at: string; last_seen_at: string; seconds_total: number };
+type Session = { id: string; country: string | null; city: string | null; started_at: string; last_seen_at: string; seconds_total: number };
 type AdvAd = { id: string; user_id: string; title: string; kind: string; payload: string; daily_impressions: number; status: string; rejection_reason: string | null; created_at: string };
 type Withdrawal = { id: string; user_id: string; amount_usd_cents: number; pay_network: string | null; destination: any; status: string; created_at: string; admin_note: string | null };
+
+const SECTIONS = [
+  { id: "ads",         label: "House Ads",   icon: Radio },
+  { id: "marquees",    label: "Marquees",    icon: ScrollText },
+  { id: "reviews",     label: "Review Ads",  icon: Star },
+  { id: "withdrawals", label: "Withdrawals", icon: Wallet },
+  { id: "listeners",   label: "Listeners",   icon: Users },
+];
 
 const Admin = () => {
   const nav = useNavigate();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-
-  // Ads
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("ads");
   const [ads, setAds] = useState<Ad[]>([]);
-  const [tab, setTab] = useState("video_url");
-  const [title, setTitle] = useState(""); const [urlVal, setUrlVal] = useState(""); const [file, setFile] = useState<File | null>(null);
+  const [adTab, setAdTab] = useState("video_url");
+  const [title, setTitle] = useState("");
+  const [urlVal, setUrlVal] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // Marquees
   const [marquees, setMarquees] = useState<Marquee[]>([]);
-  const [mText, setMText] = useState(""); const [mPos, setMPos] = useState<"top" | "bottom">("top");
-
-  // Sessions
+  const [mText, setMText] = useState("");
+  const [mPos, setMPos] = useState<"top" | "bottom">("top");
   const [sessions, setSessions] = useState<Session[]>([]);
-
-  // Advertiser ads
   const [advAds, setAdvAds] = useState<AdvAd[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
 
@@ -58,26 +59,12 @@ const Admin = () => {
   }, [nav]);
 
   const refreshAll = () => { refresh(); refreshMarquees(); refreshSessions(); refreshAdv(); refreshWithdrawals(); };
-  const refresh = async () => {
-    const { data } = await supabase.from("ads").select("*").order("sequence");
-    setAds((data || []) as Ad[]);
-  };
-  const refreshMarquees = async () => {
-    const { data } = await supabase.from("marquee_texts").select("*").order("position").order("sequence");
-    setMarquees((data || []) as Marquee[]);
-  };
-  const refreshSessions = async () => {
-    const { data } = await supabase.from("listener_sessions").select("*").order("last_seen_at", { ascending: false }).limit(200);
-    setSessions((data || []) as Session[]);
-  };
-  const refreshAdv = async () => {
-    const { data } = await supabase.from("advertiser_ads").select("*").order("created_at", { ascending: false });
-    setAdvAds((data || []) as AdvAd[]);
-  };
-  const refreshWithdrawals = async () => {
-    const { data } = await supabase.from("wallet_payments").select("*").eq("kind", "withdrawal").order("created_at", { ascending: false });
-    setWithdrawals((data || []) as Withdrawal[]);
-  };
+  const refresh = async () => { const { data } = await supabase.from("ads").select("*").order("sequence"); setAds((data || []) as Ad[]); };
+  const refreshMarquees = async () => { const { data } = await supabase.from("marquee_texts").select("*").order("position").order("sequence"); setMarquees((data || []) as Marquee[]); };
+  const refreshSessions = async () => { const { data } = await supabase.from("listener_sessions").select("*").order("last_seen_at", { ascending: false }).limit(200); setSessions((data || []) as Session[]); };
+  const refreshAdv = async () => { const { data } = await supabase.from("advertiser_ads").select("*").order("created_at", { ascending: false }); setAdvAds((data || []) as AdvAd[]); };
+  const refreshWithdrawals = async () => { const { data } = await supabase.from("wallet_payments").select("*").eq("kind", "withdrawal").order("created_at", { ascending: false }); setWithdrawals((data || []) as Withdrawal[]); };
+
   const resolveWithdrawal = async (id: string, approve: boolean) => {
     const note = prompt(approve ? "Note (optional)" : "Reason (optional)") || "";
     const { error } = await supabase.rpc("admin_resolve_withdrawal", { _payment_id: id, _approve: approve, _note: note });
@@ -86,14 +73,12 @@ const Admin = () => {
   };
 
   const sendViaPaystack = async (id: string) => {
-    if (!confirm("Send this withdrawal via Paystack Transfer? This will deduct from your Paystack balance.")) return;
+    if (!confirm("Send via Paystack Transfer?")) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const SUPA_URL = import.meta.env.VITE_SUPABASE_URL;
-      const SUPA_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      const res = await fetch(`${SUPA_URL}/functions/v1/paystack-transfer`, {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paystack-transfer`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", apikey: SUPA_KEY, Authorization: `Bearer ${session?.access_token}` },
+        headers: { "Content-Type": "application/json", apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${session?.access_token}` },
         body: JSON.stringify({ action: "initiate", payment_id: id }),
       });
       const data = await res.json();
@@ -110,14 +95,14 @@ const Admin = () => {
     setSaving(true);
     try {
       let payload = ""; let kind: Ad["kind"];
-      if (tab === "video_file") {
+      if (adTab === "video_file") {
         if (!file) { toast.error("Pick a video file"); return; }
         const path = `${userId}/${Date.now()}-${file.name}`;
         const { error: upErr } = await supabase.storage.from("ads").upload(path, file);
         if (upErr) throw upErr;
         const { data: pub } = supabase.storage.from("ads").getPublicUrl(path);
         payload = pub.publicUrl; kind = "video_file";
-      } else if (tab === "video_url") {
+      } else if (adTab === "video_url") {
         if (!urlVal.trim()) { toast.error("URL required"); return; }
         payload = urlVal.trim(); kind = "video_url";
       } else {
@@ -131,6 +116,7 @@ const Admin = () => {
     } catch (e: any) { toast.error(e.message || "Failed"); }
     finally { setSaving(false); }
   };
+
   const move = async (id: string, dir: -1 | 1) => {
     const i = ads.findIndex(a => a.id === id); const j = i + dir;
     if (i < 0 || j < 0 || j >= ads.length) return;
@@ -139,9 +125,9 @@ const Admin = () => {
     await supabase.from("ads").update({ sequence: a.sequence }).eq("id", b.id);
     refresh();
   };
-  const toggleActive = async (id: string, active: boolean) => { await supabase.from("ads").update({ active: !active }).eq("id", id); refresh(); };
-  const remove = async (id: string) => { if (!confirm("Delete?")) return; await supabase.from("ads").delete().eq("id", id); refresh(); };
 
+  const toggleActive = async (id: string, active: boolean) => { await supabase.from("ads").update({ active: !active }).eq("id", id); refresh(); };
+  const removeAd = async (id: string) => { if (!confirm("Delete?")) return; await supabase.from("ads").delete().eq("id", id); refresh(); };
   const addMarquee = async () => {
     if (!mText.trim()) return;
     const seq = marquees.filter(m => m.position === mPos).length + 1;
@@ -150,182 +136,243 @@ const Admin = () => {
   };
   const updateMarquee = async (id: string, patch: Partial<Marquee>) => { await supabase.from("marquee_texts").update(patch).eq("id", id); refreshMarquees(); };
   const deleteMarquee = async (id: string) => { await supabase.from("marquee_texts").delete().eq("id", id); refreshMarquees(); };
-
   const reviewAd = async (id: string, status: "approved" | "rejected") => {
     const reason = status === "rejected" ? prompt("Reason?") || "Rejected" : null;
     await supabase.from("advertiser_ads").update({ status, rejection_reason: reason }).eq("id", id);
     refreshAdv();
   };
 
-  if (loading) return <div className="min-h-screen grid place-items-center">Loading…</div>;
+  const goTo = (id: string) => { setActiveSection(id); setMenuOpen(false); };
+
+  if (loading) return <div className="min-h-screen grid place-items-center text-sm">Loading…</div>;
   if (!isAdmin) return (
-    <div className="min-h-screen grid place-items-center p-6 text-center">
-      <Card className="max-w-md p-6 space-y-3">
+    <div className="min-h-screen grid place-items-center p-6">
+      <Card className="max-w-sm w-full p-6 space-y-3 text-center">
         <h1 className="text-xl font-bold">Not authorized</h1>
-        <Button onClick={signOut} variant="outline">Sign out</Button>
+        <Button onClick={signOut} variant="outline" className="w-full">Sign out</Button>
       </Card>
     </div>
   );
 
+  const ActiveIcon = SECTIONS.find(s => s.id === activeSection)?.icon || Radio;
+  const activeLabel = SECTIONS.find(s => s.id === activeSection)?.label || "";
+
   return (
-    <div className="min-h-screen bg-background p-4 sm:p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Admin</h1>
-          <Button variant="outline" onClick={signOut}><LogOut className="h-4 w-4 mr-1" /> Sign out</Button>
+    <div className="min-h-screen bg-background flex flex-col">
+
+      {/* Top bar */}
+      <div className="sticky top-0 z-40 bg-background border-b flex items-center gap-3 px-4 py-3 shrink-0">
+        <button onClick={() => setMenuOpen(true)} className="p-1.5 rounded-md hover:bg-muted transition-colors">
+          <Menu className="h-5 w-5" />
+        </button>
+        <ActiveIcon className="h-4 w-4 text-primary shrink-0" />
+        <span className="font-semibold text-sm flex-1">{activeLabel}</span>
+        <Button variant="ghost" size="sm" onClick={signOut} className="gap-1 text-muted-foreground shrink-0">
+          <LogOut className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Hamburger drawer */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="w-64 bg-background border-r flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between px-4 py-4 border-b">
+              <span className="font-bold">Admin Panel</span>
+              <button onClick={() => setMenuOpen(false)} className="p-1 rounded-md hover:bg-muted">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+              {SECTIONS.map(s => {
+                const Icon = s.icon;
+                const active = activeSection === s.id;
+                return (
+                  <button key={s.id} onClick={() => goTo(s.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors ${active ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="flex-1 text-left">{s.label}</span>
+                    {active && <ChevronRight className="h-4 w-4" />}
+                  </button>
+                );
+              })}
+            </nav>
+            <div className="p-4 border-t">
+              <Button variant="outline" onClick={signOut} className="w-full gap-2">
+                <LogOut className="h-4 w-4" /> Sign out
+              </Button>
+            </div>
+          </div>
+          <div className="flex-1 bg-black/50" onClick={() => setMenuOpen(false)} />
         </div>
+      )}
 
-        <Tabs defaultValue="ads">
-          <TabsList className="grid grid-cols-5 w-full">
-            <TabsTrigger value="ads">House ads</TabsTrigger>
-            <TabsTrigger value="marquees">Marquees</TabsTrigger>
-            <TabsTrigger value="reviews">Review ads</TabsTrigger>
-            <TabsTrigger value="withdrawals">Withdrawals</TabsTrigger>
-            <TabsTrigger value="listeners">Listeners</TabsTrigger>
-          </TabsList>
+      {/* Page content */}
+      <div className="flex-1 p-4 max-w-2xl mx-auto w-full space-y-4">
 
-          <TabsContent value="ads" className="space-y-4 pt-4">
+        {activeSection === "ads" && (
+          <>
             <Card className="p-4 space-y-3">
               <h2 className="font-semibold">Add new ad</h2>
-              <Input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-              <Tabs value={tab} onValueChange={setTab}>
+              <Input placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
+              <Tabs value={adTab} onValueChange={setAdTab}>
                 <TabsList className="grid grid-cols-3 w-full">
-                  <TabsTrigger value="video_url">Video URL</TabsTrigger>
-                  <TabsTrigger value="video_file">Upload video</TabsTrigger>
-                  <TabsTrigger value="monetag_url">Monetag URL</TabsTrigger>
+                  <TabsTrigger value="video_url" className="text-xs">Video URL</TabsTrigger>
+                  <TabsTrigger value="video_file" className="text-xs">Upload</TabsTrigger>
+                  <TabsTrigger value="monetag_url" className="text-xs">Monetag</TabsTrigger>
                 </TabsList>
-                <TabsContent value="video_url" className="pt-3"><Input placeholder="https://… or YouTube" value={urlVal} onChange={(e) => setUrlVal(e.target.value)} /></TabsContent>
+                <TabsContent value="video_url" className="pt-3">
+                  <Input placeholder="https://… or YouTube" value={urlVal} onChange={e => setUrlVal(e.target.value)} />
+                </TabsContent>
                 <TabsContent value="video_file" className="pt-3">
-                  <label className="inline-flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer text-sm">
-                    <input type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] || null)} className="hidden" />
-                    <Upload className="h-4 w-4" /> {file ? file.name : "Choose file"}
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer text-sm">
+                    <input type="file" accept="video/*" onChange={e => setFile(e.target.files?.[0] || null)} className="hidden" />
+                    <Upload className="h-4 w-4" /> {file ? file.name : "Choose video file"}
                   </label>
                 </TabsContent>
-                <TabsContent value="monetag_url" className="pt-3"><Input placeholder="Monetag URL" value={urlVal} onChange={(e) => setUrlVal(e.target.value)} /></TabsContent>
+                <TabsContent value="monetag_url" className="pt-3">
+                  <Input placeholder="Monetag URL" value={urlVal} onChange={e => setUrlVal(e.target.value)} />
+                </TabsContent>
               </Tabs>
-              <Button onClick={addAd} disabled={saving} className="w-full">{saving ? "Saving…" : "Add"}</Button>
+              <Button onClick={addAd} disabled={saving} className="w-full">{saving ? "Saving…" : "Add Ad"}</Button>
             </Card>
             <Card className="p-4">
-              <h2 className="font-semibold mb-3">Sequence ({ads.length})</h2>
+              <h2 className="font-semibold mb-3">Ad Sequence ({ads.length})</h2>
+              {ads.length === 0 && <p className="text-sm text-muted-foreground">No ads yet.</p>}
               <div className="space-y-2">
                 {ads.map((a, i) => (
-                  <div key={a.id} className="flex items-center gap-2 p-2 rounded-md border">
-                    <div className="text-xs w-6 text-muted-foreground">#{i + 1}</div>
+                  <div key={a.id} className="flex items-center gap-2 p-3 rounded-xl border">
+                    <div className="text-xs font-mono w-5 text-muted-foreground shrink-0">#{i+1}</div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{a.title}</div>
-                      <div className="text-xs text-muted-foreground truncate">{a.kind} · {a.payload}</div>
+                      <div className="font-medium text-sm truncate">{a.title}</div>
+                      <div className="text-xs text-muted-foreground">{a.kind}</div>
                     </div>
-                    <button onClick={() => toggleActive(a.id, a.active)} className={`text-xs px-2 py-1 rounded ${a.active ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>{a.active ? "Active" : "Off"}</button>
-                    <Button variant="ghost" size="icon" onClick={() => move(a.id, -1)}><ArrowUp className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => move(a.id, 1)}><ArrowDown className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => remove(a.id)}><Trash2 className="h-4 w-4" /></Button>
+                    <button onClick={() => toggleActive(a.id, a.active)}
+                      className={`text-xs px-2 py-1 rounded-full shrink-0 ${a.active ? "bg-green-500/15 text-green-600" : "bg-muted text-muted-foreground"}`}>
+                      {a.active ? "On" : "Off"}
+                    </button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => move(a.id, -1)}><ArrowUp className="h-3 w-3" /></Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => move(a.id, 1)}><ArrowDown className="h-3 w-3" /></Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-destructive" onClick={() => removeAd(a.id)}><Trash2 className="h-3 w-3" /></Button>
                   </div>
                 ))}
               </div>
             </Card>
-          </TabsContent>
+          </>
+        )}
 
-          <TabsContent value="marquees" className="space-y-4 pt-4">
+        {activeSection === "marquees" && (
+          <>
             <Card className="p-4 space-y-3">
               <h2 className="font-semibold">Add marquee text</h2>
-              <Input placeholder="Marquee text" value={mText} onChange={(e) => setMText(e.target.value)} />
+              <Input placeholder="Marquee text…" value={mText} onChange={e => setMText(e.target.value)} />
               <div className="flex gap-2">
-                <select value={mPos} onChange={(e) => setMPos(e.target.value as any)} className="border rounded-md px-2 text-sm bg-background">
-                  <option value="top">Top</option><option value="bottom">Bottom</option>
+                <select value={mPos} onChange={e => setMPos(e.target.value as any)}
+                  className="flex-1 border rounded-md px-3 py-2 text-sm bg-background">
+                  <option value="top">Top</option>
+                  <option value="bottom">Bottom</option>
                 </select>
                 <Button onClick={addMarquee}>Add</Button>
               </div>
             </Card>
             <Card className="p-4 space-y-2">
-              {marquees.map((m) => (
-                <div key={m.id} className="flex items-center gap-2 p-2 border rounded-md">
-                  <span className="text-xs w-12 text-muted-foreground">{m.position}</span>
-                  <Input defaultValue={m.text} onBlur={(e) => e.target.value !== m.text && updateMarquee(m.id, { text: e.target.value })} />
-                  <button onClick={() => updateMarquee(m.id, { active: !m.active })} className={`text-xs px-2 py-1 rounded ${m.active ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>{m.active ? "On" : "Off"}</button>
-                  <Button variant="ghost" size="icon" onClick={() => deleteMarquee(m.id)}><Trash2 className="h-4 w-4" /></Button>
+              <h2 className="font-semibold mb-2">All marquees ({marquees.length})</h2>
+              {marquees.length === 0 && <p className="text-sm text-muted-foreground">No marquees.</p>}
+              {marquees.map(m => (
+                <div key={m.id} className="flex items-center gap-2 p-3 border rounded-xl">
+                  <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${m.position === "top" ? "bg-blue-500/15 text-blue-600" : "bg-purple-500/15 text-purple-600"}`}>{m.position}</span>
+                  <Input defaultValue={m.text} className="flex-1 text-sm"
+                    onBlur={e => e.target.value !== m.text && updateMarquee(m.id, { text: e.target.value })} />
+                  <button onClick={() => updateMarquee(m.id, { active: !m.active })}
+                    className={`text-xs px-2 py-1 rounded-full shrink-0 ${m.active ? "bg-green-500/15 text-green-600" : "bg-muted text-muted-foreground"}`}>
+                    {m.active ? "On" : "Off"}
+                  </button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-destructive" onClick={() => deleteMarquee(m.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
                 </div>
               ))}
             </Card>
-          </TabsContent>
+          </>
+        )}
 
-          <TabsContent value="reviews" className="space-y-4 pt-4">
-            <Card className="p-4">
-              <h2 className="font-semibold mb-3">Submitted ads</h2>
-              {advAds.length === 0 && <p className="text-sm text-muted-foreground">No submissions.</p>}
-              <div className="space-y-2">
-                {advAds.map((a) => (
-                  <div key={a.id} className="border rounded-md p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{a.title}</div>
-                        <div className="text-xs text-muted-foreground truncate">{a.kind} · {a.daily_impressions}/day · {new Date(a.created_at).toLocaleString()}</div>
-                        <a href={a.payload} target="_blank" rel="noreferrer" className="text-xs underline break-all">{a.payload}</a>
-                      </div>
-                      <span className="text-xs px-2 py-1 rounded bg-muted">{a.status}</span>
+        {activeSection === "reviews" && (
+          <Card className="p-4">
+            <h2 className="font-semibold mb-3">Submitted Ads ({advAds.length})</h2>
+            {advAds.length === 0 && <p className="text-sm text-muted-foreground">No submissions.</p>}
+            <div className="space-y-3">
+              {advAds.map(a => (
+                <div key={a.id} className="border rounded-xl p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-sm truncate">{a.title}</div>
+                      <div className="text-xs text-muted-foreground">{a.kind} · {a.daily_impressions}/day · {new Date(a.created_at).toLocaleDateString()}</div>
+                      <a href={a.payload} target="_blank" rel="noreferrer" className="text-xs text-primary underline break-all line-clamp-1">{a.payload}</a>
                     </div>
-                    {a.status === "pending_review" && (
-                      <div className="flex gap-2 mt-2">
-                        <Button size="sm" onClick={() => reviewAd(a.id, "approved")}><Check className="h-4 w-4 mr-1" /> Approve</Button>
-                        <Button size="sm" variant="outline" onClick={() => reviewAd(a.id, "rejected")}><X className="h-4 w-4 mr-1" /> Reject</Button>
-                      </div>
-                    )}
+                    <span className={`text-xs px-2 py-1 rounded-full shrink-0 ${a.status === "approved" ? "bg-green-500/15 text-green-600" : a.status === "rejected" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-600"}`}>{a.status}</span>
                   </div>
-                ))}
-              </div>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="withdrawals" className="space-y-4 pt-4">
-            <Card className="p-4">
-              <h2 className="font-semibold mb-3">Withdrawal requests ({withdrawals.length})</h2>
-              {withdrawals.length === 0 && <div className="text-sm text-muted-foreground">No requests.</div>}
-              <div className="space-y-2">
-                {withdrawals.map((w) => (
-                  <div key={w.id} className="border rounded-md p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="font-medium">${(w.amount_usd_cents/100).toFixed(2)} · {w.pay_network}</div>
-                        <div className="text-xs text-muted-foreground break-all">User: {w.user_id}</div>
-                        <div className="text-xs break-all">Dest: {JSON.stringify(w.destination)}</div>
-                        <div className="text-xs text-muted-foreground">{new Date(w.created_at).toLocaleString()}</div>
-                        {w.admin_note && <div className="text-xs">Note: {w.admin_note}</div>}
-                      </div>
-                      <span className={`text-xs px-2 py-1 rounded ${w.status === "approved" ? "bg-green-500/15 text-green-600" : w.status === "rejected" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-600"}`}>{w.status}</span>
+                  {a.status === "pending_review" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button size="sm" className="gap-1" onClick={() => reviewAd(a.id, "approved")}><Check className="h-3 w-3" /> Approve</Button>
+                      <Button size="sm" variant="outline" className="gap-1" onClick={() => reviewAd(a.id, "rejected")}><X className="h-3 w-3" /> Reject</Button>
                     </div>
-                    {w.status === "pending" && (
-                      <div className="flex gap-2 mt-2">
-                        <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => sendViaPaystack(w.id)} disabled={w.status !== "pending"}>💸 Send via Paystack</Button>
-                        <Button size="sm" onClick={() => resolveWithdrawal(w.id, true)} variant="outline"><Check className="h-4 w-4 mr-1" /> Mark paid</Button>
-                        <Button size="sm" variant="outline" onClick={() => resolveWithdrawal(w.id, false)}><X className="h-4 w-4 mr-1" /> Reject & refund</Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </TabsContent>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
-          <TabsContent value="listeners" className="space-y-4 pt-4">
-            <Card className="p-4">
-              <h2 className="font-semibold mb-3">Recent listeners ({sessions.length})</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead><tr className="text-left text-muted-foreground"><th className="py-1">Country</th><th>City</th><th>Time spent</th><th>Last seen</th></tr></thead>
-                  <tbody>
-                    {sessions.map((s) => (
-                      <tr key={s.id} className="border-t border-border/40">
-                        <td className="py-1.5">{s.country || "—"}</td>
-                        <td>{s.city || "—"}</td>
-                        <td>{Math.floor(s.seconds_total/60)}m {s.seconds_total%60}s</td>
-                        <td>{new Date(s.last_seen_at).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        {activeSection === "withdrawals" && (
+          <Card className="p-4">
+            <h2 className="font-semibold mb-3">Withdrawals ({withdrawals.length})</h2>
+            {withdrawals.length === 0 && <div className="text-sm text-muted-foreground">No requests.</div>}
+            <div className="space-y-3">
+              {withdrawals.map(w => (
+                <div key={w.id} className="border rounded-xl p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-sm">${(w.amount_usd_cents/100).toFixed(2)} · {w.pay_network}</div>
+                      <div className="text-xs text-muted-foreground">User: {w.user_id.slice(0,8)}…</div>
+                      <div className="text-xs truncate">To: {typeof w.destination === "object" ? w.destination?.details || JSON.stringify(w.destination) : w.destination}</div>
+                      <div className="text-xs text-muted-foreground">{new Date(w.created_at).toLocaleString()}</div>
+                      {w.admin_note && <div className="text-xs text-amber-600">Note: {w.admin_note}</div>}
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full shrink-0 ${w.status === "finished" ? "bg-green-500/15 text-green-600" : w.status === "failed" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-600"}`}>{w.status}</span>
+                  </div>
+                  {w.status === "pending" && (
+                    <div className="space-y-2">
+                      <Button size="sm" className="w-full bg-green-600 hover:bg-green-700 gap-1" onClick={() => sendViaPaystack(w.id)}>💸 Send via Paystack</Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button size="sm" variant="outline" className="gap-1" onClick={() => resolveWithdrawal(w.id, true)}><Check className="h-3 w-3" /> Mark paid</Button>
+                        <Button size="sm" variant="outline" className="gap-1 text-destructive" onClick={() => resolveWithdrawal(w.id, false)}><X className="h-3 w-3" /> Reject</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {activeSection === "listeners" && (
+          <Card className="p-4">
+            <h2 className="font-semibold mb-3">Recent Listeners ({sessions.length})</h2>
+            <div className="space-y-2">
+              {sessions.map(s => (
+                <div key={s.id} className="flex items-center gap-3 p-3 border rounded-xl">
+                  <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-bold shrink-0">
+                    {(s.country || "?").slice(0,2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium">{s.country || "Unknown"}{s.city ? ` · ${s.city}` : ""}</div>
+                    <div className="text-xs text-muted-foreground">{Math.floor(s.seconds_total/60)}m {s.seconds_total%60}s · {new Date(s.last_seen_at).toLocaleDateString()}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
       </div>
     </div>
   );
