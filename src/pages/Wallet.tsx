@@ -9,10 +9,7 @@ import { toast } from "sonner";
 
 type Tx = { id: string; kind: string; amount_cents: number; status: string; note: string | null; created_at: string };
 type CryptoOpt = { code: string; network: string };
-type CryptoPayment = {
-  id: string; pay_address: string; pay_amount: string; pay_currency: string;
-  pay_network: string; expires_at: string; status: string;
-};
+type CryptoPayment = { id: string; pay_address: string; pay_amount: string; pay_currency: string; pay_network: string; expires_at: string; status: string };
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
@@ -24,14 +21,15 @@ const Wallet = () => {
   const [balance, setBalance] = useState(0);
   const [txs, setTxs] = useState<Tx[]>([]);
   const [cryptos, setCryptos] = useState<CryptoOpt[]>([]);
-  const [chosenCrypto, setChosenCrypto] = useState<string>("");
+  const [chosenCrypto, setChosenCrypto] = useState("");
   const [busy, setBusy] = useState(false);
   const [depositTab, setDepositTab] = useState<"crypto" | "paystack">("crypto");
   const [depositUsd, setDepositUsd] = useState("5");
+  const [depositKes, setDepositKes] = useState("650");
   const [cryptoPay, setCryptoPay] = useState<CryptoPayment | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
-  const [paystackId, setPaystackId] = useState<string | null>(null);
-  const [paystackReady, setPaystackReady] = useState(false);
+  const [paystackDone, setPaystackDone] = useState(false);
+  const [paystackPayId, setPaystackPayId] = useState<string | null>(null);
   const [withdrawUsd, setWithdrawUsd] = useState("5");
   const [wMethod, setWMethod] = useState("mobile_money");
   const [wDest, setWDest] = useState("");
@@ -53,20 +51,10 @@ const Wallet = () => {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || data?.message || `Error ${res.status}`);
+    if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
     if (data?.error) throw new Error(data.error);
     return data;
   };
-
-  const loadPaystackScript = (): Promise<void> => new Promise((resolve) => {
-    const w = window as any;
-    if (w.PaystackPop) { resolve(); return; }
-    const s = document.createElement("script");
-    s.src = "https://js.paystack.co/v2/inline.js";
-    s.onload = () => resolve();
-    s.onerror = () => resolve();
-    document.head.appendChild(s);
-  });
 
   useEffect(() => {
     (async () => {
@@ -86,9 +74,9 @@ const Wallet = () => {
       const fb = [
         { code: "usdttrc20", network: "TRON (TRC20)" },
         { code: "usdterc20", network: "Ethereum (ERC20)" },
-        { code: "usdtbsc",   network: "BNB Smart Chain (BEP20)" },
+        { code: "usdtbsc", network: "BNB Smart Chain (BEP20)" },
         { code: "usdtmatic", network: "Polygon" },
-        { code: "usdtsol",   network: "Solana" },
+        { code: "usdtsol", network: "Solana" },
       ];
       setCryptos(fb); setChosenCrypto(fb[0].code);
     })();
@@ -116,8 +104,8 @@ const Wallet = () => {
   }, [cryptoPay, uid, secondsLeft]);
 
   const startCryptoDeposit = async () => {
-    const kes = Number(depositKes);
-    if (!(kes >= 500)) { toast.error("Min KES 500"); return; }
+    const usd = parseFloat(depositUsd);
+    if (!(usd >= 5)) { toast.error("Min $5"); return; }
     if (!chosenCrypto) { toast.error("Select a network"); return; }
     setBusy(true);
     try {
@@ -125,13 +113,12 @@ const Wallet = () => {
       if (!session) throw new Error("Not logged in");
       const data = await callFn("nowpayments", { amount_usd: usd, pay_currency: chosenCrypto }, session.access_token);
       if (!data.pay_address) throw new Error("No payment address returned");
-      setCryptoPay(data);
-      scrollTop();
+      setCryptoPay(data); scrollTop();
     } catch (e: any) { toast.error(e.message || "Failed"); }
     finally { setBusy(false); }
   };
 
-  const verifyPaystackById = async (id: string) => {
+  const verifyPaystack = async (id: string) => {
     setBusy(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -141,7 +128,7 @@ const Wallet = () => {
       const j = await r.json();
       if (j.status === "finished") {
         toast.success("Deposit credited!");
-        setPaystackReady(false); setPaystackId(null);
+        setPaystackDone(false); setPaystackPayId(null);
         if (uid) load(uid);
       } else {
         toast.error("Payment not confirmed yet. Complete payment first.");
@@ -157,30 +144,45 @@ const Wallet = () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not logged in");
-      await loadPaystackScript();
+
+      // Load Paystack script dynamically
+      await new Promise<void>((resolve) => {
+        const w = window as any;
+        if (w.PaystackPop) { resolve(); return; }
+        const s = document.createElement("script");
+        s.src = "https://js.paystack.co/v2/inline.js";
+        s.onload = () => resolve();
+        s.onerror = () => resolve();
+        document.head.appendChild(s);
+      });
+
       const w = window as any;
-      if (!w.PaystackPop) throw new Error("Paystack failed to load. Check your internet connection.");
-      const data = await callFn("paystack", { amount_kes: Number(depositKes) }, session.access_token);
-      if (!data.authorization_url && !data.access_code) throw new Error(data.error || "Payment init failed");
-      setPaystackId(data.id);
-      setPaystackReady(true);
+      if (!w.PaystackPop) throw new Error("Paystack script failed to load");
+
+      const data = await callFn("paystack", { amount_kes: kes }, session.access_token);
+      if (!data.access_code && !data.authorization_url) throw new Error(data.error || "No payment data returned");
+
+      setPaystackPayId(data.id);
+      setPaystackDone(true);
       scrollTop();
+
+      // Open Paystack popup using access_code
       const popup = new w.PaystackPop();
       if (data.access_code) {
         popup.resumeTransaction(data.access_code, {
-          onSuccess: () => { verifyPaystackById(data.id); },
+          onSuccess: () => verifyPaystack(data.id),
           onCancel: () => {},
         });
       } else {
         popup.newTransaction({
           key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "",
           authorization_url: data.authorization_url,
-          onSuccess: () => { verifyPaystackById(data.id); },
+          onSuccess: () => verifyPaystack(data.id),
           onCancel: () => {},
         });
       }
-    } catch (e: any) { toast.error(e.message || "Failed"); }
-    finally { setBusy(false); }
+    } catch (e: any) { toast.error(e.message || "Failed"); setBusy(false); return; }
+    setBusy(false);
   };
 
   const requestWithdraw = async () => {
@@ -200,7 +202,7 @@ const Wallet = () => {
         setWResult({ ok: true, message: "Crypto withdrawal submitted. Processed within 24 hours." });
       } else {
         const data = await callFn("paystack-transfer", { action: "withdraw", amount_usd: usd, method: wMethod, details: wDest }, session.access_token);
-        setWResult({ ok: true, message: data.message || "Withdrawal sent! Should arrive within minutes." });
+        setWResult({ ok: true, message: data.message || "Withdrawal sent!" });
         load(uid);
       }
       setWDest("");
@@ -239,23 +241,23 @@ const Wallet = () => {
               </Button>
             </div>
             <div className="text-xs bg-yellow-500/10 text-yellow-600 rounded p-2">⚠ Send only on <b>{cryptoPay.pay_network}</b> network.</div>
-            <div className="text-xs text-muted-foreground">Status: {cryptoPay.status} · Auto-credited when confirmed.</div>
+            <div className="text-xs text-muted-foreground">Auto-credited when confirmed.</div>
             <Button variant="outline" onClick={() => setCryptoPay(null)} className="w-full">Close</Button>
           </Card>
         )}
 
-        {paystackReady && !cryptoPay && (
+        {paystackDone && !cryptoPay && (
           <Card className="p-4 space-y-3">
-            <div className="font-semibold">Payment in progress</div>
-            <p className="text-sm text-muted-foreground">Complete payment in the Paystack popup. If it closed, tap below.</p>
-            <Button onClick={() => { if (paystackId) verifyPaystackById(paystackId); }} disabled={busy} variant="outline" className="w-full">
+            <div className="font-semibold">Complete your payment</div>
+            <p className="text-sm text-muted-foreground">The Paystack popup should be open. If closed, tap verify after paying.</p>
+            <Button onClick={() => { if (paystackPayId) verifyPaystack(paystackPayId); }} disabled={busy} className="w-full">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "I have paid — verify"}
             </Button>
-            <Button variant="ghost" size="sm" className="w-full" onClick={() => { setPaystackReady(false); setPaystackId(null); }}>Cancel</Button>
+            <Button variant="ghost" size="sm" className="w-full" onClick={() => { setPaystackDone(false); setPaystackPayId(null); }}>Cancel</Button>
           </Card>
         )}
 
-        {!cryptoPay && !paystackReady && (
+        {!cryptoPay && !paystackDone && (
           <Card className="p-4 space-y-3">
             <div className="font-semibold">Deposit</div>
 
@@ -270,14 +272,11 @@ const Wallet = () => {
               </button>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Amount in USD</label>
-              <Input type="number" min="5" step="1" value={depositUsd} onChange={(e) => setDepositUsd(e.target.value)} placeholder="Amount in USD" />
-              <div className="text-xs text-muted-foreground">Min $5 · $1 fee · balance credited in USD</div>
-            </div>
-
             {depositTab === "crypto" && (
               <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Amount in USD</label>
+                <Input type="number" min="5" step="1" value={depositUsd} onChange={(e) => setDepositUsd(e.target.value)} placeholder="Amount in USD" />
+                <div className="text-xs text-muted-foreground">Min $5 · $1 fee · balance credited in USD</div>
                 <label className="text-xs text-muted-foreground">Select network</label>
                 <select value={chosenCrypto} onChange={(e) => setChosenCrypto(e.target.value)} className="w-full h-10 rounded-md border bg-background px-2 text-sm">
                   {cryptos.map(c => <option key={c.code} value={c.code}>USDT — {c.network}</option>)}
@@ -291,15 +290,9 @@ const Wallet = () => {
             {depositTab === "paystack" && (
               <div className="space-y-2">
                 <label className="text-xs text-muted-foreground">Amount in KES</label>
-                <input
-                  type="number" min="500" step="50"
-                  value={depositKes}
-                  onChange={(e) => setDepositKes(e.target.value)}
-                  placeholder="Amount in KES"
-                  className="w-full h-10 rounded-md border bg-background px-3 text-sm"
-                />
+                <Input type="number" min="500" step="50" value={depositKes} onChange={(e) => setDepositKes(e.target.value)} placeholder="Amount in KES" />
                 <div className="text-xs text-muted-foreground">
-                  ≈ ${(Number(depositKes) / 130 - 1).toFixed(2)} USD credited after $1 fee · min KES 500
+                  ≈ ${Math.max(0, Number(depositKes) / 130 - 1).toFixed(2)} USD credited after $1 fee · min KES 500
                 </div>
                 <div className="text-xs text-muted-foreground">Card, M-Pesa and Bank Transfer available</div>
                 <Button onClick={startPaystackDeposit} disabled={busy} className="w-full">
@@ -357,4 +350,3 @@ const Wallet = () => {
 };
 
 export default Wallet;
-// Sun May 10 08:07:36 EAT 2026
