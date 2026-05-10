@@ -139,8 +139,8 @@ const Wallet = () => {
   };
 
   const startPaystackDeposit = async () => {
-    const kes = Number(depositKes);
-    if (!(kes >= 500)) { toast.error("Min KES 500"); return; }
+    const kes = Math.round(Number(depositUsd) * 130);
+    if (!(Number(depositUsd) >= 5)) { toast.error("Min $5"); return; }
     setBusy(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -286,12 +286,9 @@ const Wallet = () => {
 
             {depositTab === "paystack" && (
               <div className="space-y-2">
-                <label className="text-xs text-muted-foreground">Amount in KES</label>
-                <Input type="number" min="500" step="50" value={depositKes} onChange={(e) => setDepositKes(e.target.value)} placeholder="Amount in KES" />
-                <div className="text-xs text-muted-foreground">
-                  ≈ ${Math.max(0, Number(depositKes) / 130 - 1).toFixed(2)} USD credited after $1 fee · min KES 500
-                </div>
-                <div className="text-xs text-muted-foreground">Visa & Mastercard accepted</div>
+                <label className="text-xs text-muted-foreground">Amount in USD</label>
+                <Input type="number" min="5" step="1" value={depositUsd} onChange={(e) => setDepositUsd(e.target.value)} placeholder="Amount in USD" />
+                <div className="text-xs text-muted-foreground">Min $5 · $1 fee · Visa & Mastercard accepted</div>
                 <Button onClick={startPaystackDeposit} disabled={busy} className="w-full">
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay with Card"}
                 </Button>
