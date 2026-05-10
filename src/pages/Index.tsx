@@ -14,6 +14,7 @@ import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead,
 import { KENYA_YT_CHANNELS, YT_PREFIX, isYouTubeStream, ytChannelIdFromUrl } from "@/lib/kenyaYouTube";
 import { startListenerTracking } from "@/lib/listenerTracking";
 import { supabase } from "@/integrations/supabase/client";
+import Chatbot from "@/components/Chatbot";
 import { Link } from "react-router-dom";
 import { User as UserIcon, Megaphone } from "lucide-react";
 
