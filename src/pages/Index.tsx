@@ -11,6 +11,11 @@ import LiveViewers from "@/components/LiveViewers";
 import LiveStatsBar from "@/components/LiveStatsBar";
 import BigPlayer, { PlaylistItem } from "@/components/BigPlayer";
 import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead, getEntry, DEAD_TRIES } from "@/lib/reliability";
+import { SleepTimer } from "@/components/SleepTimer";
+import { ShareButton } from "@/components/ShareButton";
+import { StationRating } from "@/components/StationRating";
+import { Equalizer, applyEQPreset } from "@/components/Equalizer";
+import type { EQPreset } from "@/components/Equalizer";
 import { KENYA_YT_CHANNELS, YT_PREFIX, isYouTubeStream, ytChannelIdFromUrl } from "@/lib/kenyaYouTube";
 
 import { useFavorites } from "@/lib/useFavorites";
@@ -121,6 +126,7 @@ const detectNetQuality = (): NetQuality => {
 const Index = () => {
   // shared player
   const [mode, setMode] = useState<"radio" | "tv">("radio");
+  const [eqPreset, setEqPreset] = useState<EQPreset>("normal");
   const { topFavorites, trackPlay } = useFavorites();
   const [volume, setVolume] = useState(80);
   const [muted, setMuted] = useState(false);
