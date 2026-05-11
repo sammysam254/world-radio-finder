@@ -1362,6 +1362,7 @@ const Index = () => {
         <span>·</span>
         <a href="tel:+254706499848" className="hover:text-primary transition-colors">+254706499848</a>
       </div>
+      <Chatbot />
     </div>
 
   );
