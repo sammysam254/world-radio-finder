@@ -12,6 +12,7 @@ import LiveStatsBar from "@/components/LiveStatsBar";
 import BigPlayer, { PlaylistItem } from "@/components/BigPlayer";
 import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead, getEntry, DEAD_TRIES } from "@/lib/reliability";
 import { KENYA_YT_CHANNELS, YT_PREFIX, isYouTubeStream, ytChannelIdFromUrl } from "@/lib/kenyaYouTube";
+import { useFavorites } from "@/lib/useFavorites";
 import { startListenerTracking } from "@/lib/listenerTracking";
 import { supabase } from "@/integrations/supabase/client";
 import Chatbot from "@/components/Chatbot";
@@ -119,6 +120,7 @@ const detectNetQuality = (): NetQuality => {
 const Index = () => {
   // shared player
   const [mode, setMode] = useState<"radio" | "tv">("radio");
+  const { topFavorites, trackPlay } = useFavorites();
   const [volume, setVolume] = useState(80);
   const [muted, setMuted] = useState(false);
   const [buffering, setBuffering] = useState(false);
@@ -464,6 +466,8 @@ const Index = () => {
   };
 
   // Each attempt gets up to 60s to start. If not playing by then, try the next mirror.
+  const trackStationPlay = (id: string, name: string, type: "radio" | "tv") => { trackPlay(id, name, type); };
+
   const armReadinessCheck = (kind: "radio" | "tv") => {
     clearPlaybackTimer();
     const el = kind === "radio" ? audioRef.current : videoRef.current;
