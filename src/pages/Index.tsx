@@ -1346,6 +1346,9 @@ const Index = () => {
             <Button variant="ghost" size="icon" onClick={() => skipStation(1)} className="shrink-0" aria-label="Next">
               <SkipForward className="h-5 w-5" />
             </Button>
+            <ShareButton stationName={currentRadio?.name || currentTv?.name || ""} />
+            <SleepTimer onStop={() => setPlaying(false)} />
+            <Equalizer preset={eqPreset} onChange={setEqPreset} />
             <Button variant="ghost" size="icon" onClick={() => setBigPlayer(true)} className="shrink-0" aria-label="Expand">
               <ChevronUp className="h-5 w-5" />
             </Button>
