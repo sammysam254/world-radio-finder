@@ -12,6 +12,7 @@ import LiveStatsBar from "@/components/LiveStatsBar";
 import BigPlayer, { PlaylistItem } from "@/components/BigPlayer";
 import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead, getEntry, DEAD_TRIES } from "@/lib/reliability";
 import { KENYA_YT_CHANNELS, YT_PREFIX, isYouTubeStream, ytChannelIdFromUrl } from "@/lib/kenyaYouTube";
+import { EXTRA_CHANNELS } from "@/lib/extraChannels";
 import { useFavorites } from "@/lib/useFavorites";
 import { startListenerTracking } from "@/lib/listenerTracking";
 import { supabase } from "@/integrations/supabase/client";
@@ -287,7 +288,17 @@ const Index = () => {
           .map(([id, count]) => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1), count }))
           .sort((a, b) => b.count - a.count);
 
-        setTvAll(channels);
+        // Inject extra curated channels
+        const extras = EXTRA_CHANNELS.map(e => ({
+          id: e.id,
+          name: e.name,
+          logo: e.logo || "",
+          country: e.country,
+          category: e.category,
+          urls: [e.url],
+          streamIndex: 0,
+        }));
+        setTvAll([...extras, ...channels]);
         setTvCountries(cList);
         setTvCategoryList(catList);
       } catch (e) {
