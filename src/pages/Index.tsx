@@ -12,7 +12,7 @@ import LiveStatsBar from "@/components/LiveStatsBar";
 import BigPlayer, { PlaylistItem } from "@/components/BigPlayer";
 import { recordAttempt, recordFailure, recordSuccess, sortByReliability, isDead, getEntry, DEAD_TRIES } from "@/lib/reliability";
 import { KENYA_YT_CHANNELS, YT_PREFIX, isYouTubeStream, ytChannelIdFromUrl } from "@/lib/kenyaYouTube";
-import { EXTRA_CHANNELS } from "@/lib/extraChannels";
+import { EXTRA_CHANNELS, DYNAMIC_PLAYLISTS } from "@/lib/extraChannels";
 import { useFavorites } from "@/lib/useFavorites";
 import { startListenerTracking } from "@/lib/listenerTracking";
 import { supabase } from "@/integrations/supabase/client";
@@ -298,7 +298,47 @@ const Index = () => {
           urls: [e.url],
           streamIndex: 0,
         }));
-        setTvAll([...extras, ...channels]);
+
+        // Load dynamic playlists (sports, movies etc) from iptv-org
+        const parseM3U = (text: string, category: string) => {
+          const lines = text.split("\n");
+          const parsed: typeof extras = [];
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].startsWith("#EXTINF")) {
+              const nameMatch = lines[i].match(/,(.+)$/);
+              const logoMatch = lines[i].match(/tvg-logo="([^"]+)"/);
+              const countryMatch = lines[i].match(/tvg-country="([^"]+)"/);
+              const name = nameMatch?.[1]?.trim() || "Unknown";
+              const url = lines[i + 1]?.trim();
+              if (url && url.startsWith("http") && !url.includes("undefined")) {
+                parsed.push({
+                  id: "dyn-" + Math.random().toString(36).slice(2),
+                  name,
+                  logo: logoMatch?.[1] || "",
+                  country: countryMatch?.[1] || "INT",
+                  category,
+                  urls: [url],
+                  streamIndex: 0,
+                });
+              }
+            }
+          }
+          return parsed.slice(0, 200); // limit per playlist
+        };
+
+        let dynamicChannels: typeof extras = [];
+        await Promise.allSettled(
+          DYNAMIC_PLAYLISTS.map(async (p) => {
+            try {
+              const r = await fetch(p.url, { signal: AbortSignal.timeout(8000) });
+              const text = await r.text();
+              const parsed = parseM3U(text, p.category);
+              dynamicChannels = [...dynamicChannels, ...parsed];
+            } catch {}
+          })
+        );
+
+        setTvAll([...extras, ...dynamicChannels, ...channels]);
         setTvCountries(cList);
         setTvCategoryList(catList);
       } catch (e) {

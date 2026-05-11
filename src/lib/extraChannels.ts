@@ -1,4 +1,36 @@
 // Extra IPTV channels scraped from free public sources
+// NOTE: Sports channels like Sky Sports Premier League require the iptv-org
+// community sports playlist which is auto-loaded dynamically
+
+// Dynamic playlist URLs — loaded at runtime for always-fresh streams
+export const DYNAMIC_PLAYLISTS = [
+  {
+    id: "iptv-org-sports",
+    name: "Sports (iptv-org)",
+    url: "https://iptv-org.github.io/iptv/categories/sports.m3u",
+    category: "Sports",
+  },
+  {
+    id: "iptv-org-movies",
+    name: "Movies (iptv-org)",
+    url: "https://iptv-org.github.io/iptv/categories/movies.m3u",
+    category: "Movies",
+  },
+  {
+    id: "free-tv",
+    name: "Free TV Global",
+    url: "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
+    category: "General",
+  },
+  {
+    id: "sky-sports-pl",
+    name: "Sky Sports Premier League",
+    url: "https://live20.bozztv.com/trn03/gin-skysportspl/index.m3u8",
+    category: "Football",
+  },
+];
+
+// Extra IPTV channels scraped from free public sources
 // Football, Sports, Movies, News — direct m3u8 streams
 
 export type ExtraChannel = {
