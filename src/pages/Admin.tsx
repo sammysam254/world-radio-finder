@@ -361,19 +361,56 @@ const Admin = () => {
 
         {activeSection === "listeners" && (
           <Card className="p-4">
-            <h2 className="font-semibold mb-3">Recent Listeners ({sessions.length})</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold">Listeners ({sessions.length})</h2>
+              <Button size="sm" variant="outline" onClick={refreshSessions}>Refresh</Button>
+            </div>
+            {sessions.length === 0 && <p className="text-sm text-muted-foreground">No listeners recorded yet.</p>}
             <div className="space-y-2">
-              {sessions.map(s => (
-                <div key={s.id} className="flex items-center gap-3 p-3 border rounded-xl">
-                  <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-bold shrink-0">
-                    {(s.country || "?").slice(0,2).toUpperCase()}
+              {sessions.map(s => {
+                const ua = s.user_agent || "";
+                const isAndroid = ua.includes("Android");
+                const isIOS = ua.includes("iPhone") || ua.includes("iPad");
+                const isDesktop = !isAndroid && !isIOS;
+                const isMobile = isAndroid || isIOS;
+                const browser = ua.includes("Chrome") ? "Chrome" : ua.includes("Firefox") ? "Firefox" : ua.includes("Safari") ? "Safari" : ua.includes("Edge") ? "Edge" : "Browser";
+                const deviceType = isIOS ? "📱 iOS" : isAndroid ? "📱 Android" : "💻 Desktop";
+                const now = Date.now();
+                const lastSeen = new Date(s.last_seen_at).getTime();
+                const isOnline = (now - lastSeen) < 60000;
+                const mins = Math.floor(s.seconds_total / 60);
+                const secs = s.seconds_total % 60;
+                return (
+                  <div key={s.id} className="border rounded-xl p-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold shrink-0">
+                          {(s.country || "?").slice(0,2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium flex items-center gap-1.5">
+                            {s.country || "Unknown"}
+                            {s.city && <span className="text-muted-foreground font-normal">· {s.city}</span>}
+                            {s.region && <span className="text-muted-foreground font-normal text-xs">{s.region}</span>}
+                          </div>
+                          <div className="text-xs text-muted-foreground">{deviceType} · {browser}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500" : "bg-gray-400"}`} />
+                        <span className="text-xs text-muted-foreground">{isOnline ? "Online" : "Offline"}</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 text-xs text-muted-foreground">
+                      <span>⏱ {mins}m {secs}s listened</span>
+                      <span>👤 {s.user_id ? "Logged in" : "Guest"}</span>
+                      <span>🕐 Last seen: {new Date(s.last_seen_at).toLocaleString()}</span>
+                      <span>📅 Joined: {new Date(s.started_at || s.last_seen_at).toLocaleDateString()}</span>
+                    </div>
+                    {s.ip && <div className="text-xs text-muted-foreground">IP: {s.ip}</div>}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium">{s.country || "Unknown"}{s.city ? ` · ${s.city}` : ""}</div>
-                    <div className="text-xs text-muted-foreground">{Math.floor(s.seconds_total/60)}m {s.seconds_total%60}s · {new Date(s.last_seen_at).toLocaleDateString()}</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
         )}
