@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Trash2, ArrowUp, ArrowDown, LogOut, Upload, Check, X, Menu, Radio, ScrollText, Star, Wallet, Users, ChevronRight, Home } from "lucide-react";
 
-type Ad = { id: string; kind: "video_file" | "video_url" | "monetag_url"; title: string; payload: string; sequence: number; active: boolean };
+type Ad = { id: string; kind: "video_file" | "video_url" | "monetag_url" | "audio_file"; title: string; payload: string; sequence: number; active: boolean };
 type Marquee = { id: string; text: string; position: string; active: boolean; sequence: number };
 type Session = { id: string; country: string | null; city: string | null; started_at: string; last_seen_at: string; seconds_total: number };
 type AdvAd = { id: string; user_id: string; title: string; kind: string; payload: string; daily_impressions: number; status: string; rejection_reason: string | null; created_at: string };
@@ -102,6 +102,13 @@ const Admin = () => {
         if (upErr) throw upErr;
         const { data: pub } = supabase.storage.from("ads").getPublicUrl(path);
         payload = pub.publicUrl; kind = "video_file";
+      } else if (adTab === "audio_file") {
+        if (!file) { toast.error("Pick an audio file"); return; }
+        const path = `${userId}/audio-${Date.now()}-${file.name}`;
+        const { error: upErr } = await supabase.storage.from("ads").upload(path, file);
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from("ads").getPublicUrl(path);
+        payload = pub.publicUrl; kind = "audio_file";
       } else if (adTab === "video_url") {
         if (!urlVal.trim()) { toast.error("URL required"); return; }
         payload = urlVal.trim(); kind = "video_url";
@@ -220,9 +227,10 @@ const Admin = () => {
               <h2 className="font-semibold">Add new ad</h2>
               <Input placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
               <Tabs value={adTab} onValueChange={setAdTab}>
-                <TabsList className="grid grid-cols-3 w-full">
+                <TabsList className="grid grid-cols-4 w-full">
                   <TabsTrigger value="video_url" className="text-xs">Video URL</TabsTrigger>
-                  <TabsTrigger value="video_file" className="text-xs">Upload</TabsTrigger>
+                  <TabsTrigger value="video_file" className="text-xs">Video</TabsTrigger>
+                  <TabsTrigger value="audio_file" className="text-xs">Audio</TabsTrigger>
                   <TabsTrigger value="monetag_url" className="text-xs">Monetag</TabsTrigger>
                 </TabsList>
                 <TabsContent value="video_url" className="pt-3">
@@ -233,6 +241,13 @@ const Admin = () => {
                     <input type="file" accept="video/*" onChange={e => setFile(e.target.files?.[0] || null)} className="hidden" />
                     <Upload className="h-4 w-4" /> {file ? file.name : "Choose video file"}
                   </label>
+                </TabsContent>
+                <TabsContent value="audio_file" className="pt-3 space-y-2">
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer text-sm">
+                    <input type="file" accept="audio/*" onChange={e => setFile(e.target.files?.[0] || null)} className="hidden" />
+                    <Upload className="h-4 w-4" /> {file ? file.name : "Choose audio file (MP3, WAV, AAC)"}
+                  </label>
+                  <p className="text-xs text-muted-foreground">Audio ads play as radio-style ads between stations</p>
                 </TabsContent>
                 <TabsContent value="monetag_url" className="pt-3">
                   <Input placeholder="Monetag URL" value={urlVal} onChange={e => setUrlVal(e.target.value)} />
