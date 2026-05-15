@@ -181,6 +181,7 @@ const Index = () => {
   const [bigPlayer, setBigPlayer] = useState(false);
   const [showYouTube, setShowYouTube] = useState(false);
   const [youtubeTab, setYoutubeTab] = useState<"search"|"news"|"live">("search");
+  const [browseMenuOpen, setBrowseMenuOpen] = useState(false);
   const playerWrapRef = useRef<HTMLDivElement | null>(null);
   const skipStationRef = useRef<((dir: 1 | -1) => void) | null>(null);
 
@@ -1399,6 +1400,101 @@ const Index = () => {
         <span>·</span>
         <a href="tel:+254706499848" className="hover:text-primary transition-colors">+254706499848</a>
       </div>
+      {/* Browse Menu Drawer */}
+      {browseMenuOpen && (
+        <div className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setBrowseMenuOpen(false)} />
+          <div className="relative bg-background rounded-t-3xl sm:rounded-3xl w-full sm:max-w-sm p-6 space-y-3 shadow-2xl">
+            <div className="w-10 h-1 bg-muted rounded-full mx-auto mb-4 sm:hidden" />
+            <h2 className="font-bold text-lg mb-4">Browse & Discover</h2>
+
+            <button onClick={() => { setBrowseRadioBy("country"); setBrowseMenuOpen(false); setMode("radio"); }}
+              className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-muted transition-colors text-left">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <MapPin className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <div className="font-semibold text-sm">Radio by Country</div>
+                <div className="text-xs text-muted-foreground">Browse stations by country</div>
+              </div>
+            </button>
+
+            <button onClick={() => { setBrowseRadioBy("category"); setBrowseMenuOpen(false); setMode("radio"); }}
+              className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-muted transition-colors text-left">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Layers className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <div className="font-semibold text-sm">Radio by Category</div>
+                <div className="text-xs text-muted-foreground">News, Music, Sports, Talk</div>
+              </div>
+            </button>
+
+            <button onClick={() => { setBrowseTvBy("country"); setBrowseMenuOpen(false); setMode("tv"); }}
+              className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-muted transition-colors text-left">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                <Tv className="h-5 w-5 text-blue-500" />
+              </div>
+              <div>
+                <div className="font-semibold text-sm">TV by Country</div>
+                <div className="text-xs text-muted-foreground">Live TV channels worldwide</div>
+              </div>
+            </button>
+
+            <button onClick={() => { setBrowseTvBy("category"); setBrowseMenuOpen(false); setMode("tv"); }}
+              className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-muted transition-colors text-left">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                <Layers className="h-5 w-5 text-blue-500" />
+              </div>
+              <div>
+                <div className="font-semibold text-sm">TV by Category</div>
+                <div className="text-xs text-muted-foreground">News, Sports, Movies, Entertainment</div>
+              </div>
+            </button>
+
+            <div className="pt-1 border-t border-border/40">
+              <p className="text-xs text-muted-foreground mb-2 px-1">YouTube</p>
+              <button onClick={() => { setYoutubeTab("search"); setShowYouTube(true); setBrowseMenuOpen(false); }}
+                className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-muted transition-colors text-left">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                  <svg className="h-5 w-5 text-red-500" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814z"/><path d="M9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="white"/></svg>
+                </div>
+                <div>
+                  <div className="font-semibold text-sm">YouTube Search</div>
+                  <div className="text-xs text-muted-foreground">Search music, radio, news on YouTube</div>
+                </div>
+              </button>
+
+              <button onClick={() => { setYoutubeTab("news"); setShowYouTube(true); setBrowseMenuOpen(false); }}
+                className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-muted transition-colors text-left">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                  <svg className="h-5 w-5 text-red-500" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814z"/><path d="M9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="white"/></svg>
+                </div>
+                <div>
+                  <div className="font-semibold text-sm">YouTube Live News</div>
+                  <div className="text-xs text-muted-foreground">CNN, BBC, Al Jazeera, Citizen TV live</div>
+                </div>
+              </button>
+
+              <button onClick={() => { setYoutubeTab("live"); setShowYouTube(true); setBrowseMenuOpen(false); }}
+                className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-muted transition-colors text-left">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                  <svg className="h-5 w-5 text-red-500" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814z"/><path d="M9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="white"/></svg>
+                </div>
+                <div>
+                  <div className="font-semibold text-sm">YouTube Live</div>
+                  <div className="text-xs text-muted-foreground">Live radio & music streams on YouTube</div>
+                </div>
+              </button>
+            </div>
+
+            <button onClick={() => setBrowseMenuOpen(false)}
+              className="w-full py-3 rounded-2xl border border-border text-sm text-muted-foreground hover:bg-muted transition-colors mt-2">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
       <Chatbot />
       {showYouTube && <YouTubeBrowser onClose={() => setShowYouTube(false)} initialTab={youtubeTab} />}
     </div>
