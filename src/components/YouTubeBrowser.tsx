@@ -3,140 +3,50 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, X, Play, Loader2 } from "lucide-react";
 
-const YT_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || "";
+const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPA_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
-type YTVideo = {
-  id: string;
-  title: string;
-  channelTitle: string;
-  thumbnail: string;
-  isLive: boolean;
+type YTVideo = { id: string; title: string; channelTitle: string; thumbnail: string; isLive: boolean };
+type Props = { onClose: () => void; initialTab?: "search" | "news" | "live" };
+
+const callYT = async (action: string, params: Record<string, string> = {}): Promise<YTVideo[]> => {
+  const p = new URLSearchParams({ action, ...params });
+  const r = await fetch(`${SUPA_URL}/functions/v1/youtube-live?${p}`, {
+    headers: { apikey: SUPA_KEY },
+  });
+  const data = await r.json();
+  if (data.error) throw new Error(data.error);
+  return data.items || [];
 };
-
-type Props = {
-  onClose: () => void;
-  initialTab?: "search" | "news" | "live";
-};
-
-const NEWS_CHANNELS = [
-  "UCupvZG-5ko_eiXAupbDfxWw",
-  "UCNye-wNBqNL5ZzHSJj3l8Bg",
-  "UCIALMKvObZNtJ6AmdCLP7Hg",
-  "UChBQgieUidXV1CmDxSdRm3g",
-  "UCqBJ47FjJcl61fmSbcadAVg",
-  "UCKVsdeoHExltrWMuK0hOWmg",
-  "UCt3SE-Mvs3WwP7UW-PiFdqQ",
-  "UCTJhJBE8DYqS6tXZ0SfFiuA",
-];
 
 export const YouTubeBrowser = ({ onClose, initialTab = "search" }: Props) => {
   const [tab, setTab] = useState<"search" | "news" | "live">(initialTab);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<YTVideo[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState<YTVideo | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const doSearch = async (q: string, opts: Record<string, string> = {}) => {
-    if (!q.trim() && !opts.channelId) return;
-    setLoading(true);
-    setResults([]);
-    try {
-      const params = new URLSearchParams({
-        part: "snippet",
-        maxResults: "20",
-        key: YT_API_KEY,
-        type: "video",
-        q,
-        ...opts,
-      });
-      const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
-      const data = await r.json();
-      if (data.error) { console.error("YT API error:", data.error.message); setLoading(false); return; }
-      const videos: YTVideo[] = (data.items || [])
-        .filter((item: any) => item.id?.videoId)
-        .map((item: any) => ({
-          id: item.id.videoId,
-          title: item.snippet.title,
-          channelTitle: item.snippet.channelTitle,
-          thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || "",
-          isLive: item.snippet.liveBroadcastContent === "live",
-        }));
-      setResults(videos);
-    } catch (e) { console.error(e); }
-    setLoading(false);
-  };
-
-  const fetchLiveNews = async () => {
-    setLoading(true);
-    setResults([]);
-    const all: YTVideo[] = [];
-    await Promise.allSettled(
-      NEWS_CHANNELS.map(async (channelId) => {
-        try {
-          const params = new URLSearchParams({
-            part: "snippet", channelId, eventType: "live",
-            type: "video", maxResults: "3", key: YT_API_KEY,
-          });
-          const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
-          const data = await r.json();
-          (data.items || []).forEach((item: any) => {
-            if (item.id?.videoId && !all.find(v => v.id === item.id.videoId)) {
-              all.push({
-                id: item.id.videoId,
-                title: item.snippet.title,
-                channelTitle: item.snippet.channelTitle,
-                thumbnail: item.snippet.thumbnails?.medium?.url || "",
-                isLive: true,
-              });
-            }
-          });
-        } catch {}
-      })
-    );
-    setResults(all);
-    setLoading(false);
-  };
-
-  const fetchYTLive = async () => {
-    setLoading(true);
-    setResults([]);
-    const queries = ["live radio stream", "live music 24/7", "live news stream", "live tv channel", "radio en vivo live"];
-    const all: YTVideo[] = [];
-    await Promise.allSettled(
-      queries.map(async (q) => {
-        try {
-          const params = new URLSearchParams({
-            part: "snippet", q, eventType: "live",
-            type: "video", maxResults: "5", key: YT_API_KEY,
-          });
-          const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
-          const data = await r.json();
-          (data.items || []).forEach((item: any) => {
-            if (item.id?.videoId && !all.find(v => v.id === item.id.videoId)) {
-              all.push({
-                id: item.id.videoId,
-                title: item.snippet.title,
-                channelTitle: item.snippet.channelTitle,
-                thumbnail: item.snippet.thumbnails?.medium?.url || "",
-                isLive: true,
-              });
-            }
-          });
-        } catch {}
-      })
-    );
-    setResults(all);
+  const load = async (fn: () => Promise<YTVideo[]>) => {
+    setLoading(true); setError(null); setResults([]);
+    try { setResults(await fn()); }
+    catch (e: any) { setError(e.message || "Failed to load"); }
     setLoading(false);
   };
 
   useEffect(() => {
-    if (tab === "news") fetchLiveNews();
-    else if (tab === "live") fetchYTLive();
+    if (tab === "news") load(() => callYT("news"));
+    else if (tab === "live") load(() => callYT("ytlive"));
     else setTimeout(() => inputRef.current?.focus(), 100);
   }, [tab]);
 
-  const YTIcon = () => (
+  const doSearch = () => {
+    if (!query.trim()) return;
+    load(() => callYT("search", { q: query, maxResults: "20" }));
+  };
+
+  const YTLogo = () => (
     <svg className="h-5 w-5 text-red-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">
       <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814z"/>
       <path d="M9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="white"/>
@@ -148,7 +58,7 @@ export const YouTubeBrowser = ({ onClose, initialTab = "search" }: Props) => {
 
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0">
-        <YTIcon />
+        <YTLogo />
         <span className="font-bold flex-1">YouTube</span>
         <button onClick={onClose} className="p-1.5 rounded-full hover:bg-muted">
           <X className="h-5 w-5" />
@@ -171,7 +81,7 @@ export const YouTubeBrowser = ({ onClose, initialTab = "search" }: Props) => {
 
       {/* Player */}
       {playing && (
-        <div className="shrink-0 bg-black relative">
+        <div className="shrink-0 bg-black">
           <iframe
             key={playing.id}
             src={`https://www.youtube-nocookie.com/embed/${playing.id}?autoplay=1&playsinline=1&rel=0&modestbranding=1`}
@@ -183,38 +93,33 @@ export const YouTubeBrowser = ({ onClose, initialTab = "search" }: Props) => {
           <div className="px-3 py-2 flex items-center justify-between gap-2 bg-black">
             <div className="min-w-0">
               <p className="text-white text-xs font-medium truncate">{playing.title}</p>
-              <p className="text-gray-400 text-xs truncate">{playing.channelTitle}</p>
+              <p className="text-gray-400 text-xs">{playing.channelTitle}</p>
             </div>
-            <button onClick={() => setPlaying(null)} className="shrink-0 p-1 bg-white/10 rounded-full hover:bg-white/20">
+            <button onClick={() => setPlaying(null)} className="p-1 bg-white/10 rounded-full shrink-0">
               <X className="h-4 w-4 text-white" />
             </button>
           </div>
         </div>
       )}
 
-      {/* Search bar */}
-      {tab === "search" && !playing && (
-        <div className="px-4 py-3 shrink-0 space-y-2">
+      {/* Search */}
+      {tab === "search" && (
+        <div className="px-4 py-3 shrink-0 space-y-2 border-b">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                ref={inputRef}
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && doSearch(query)}
-                placeholder="Search music, radio, news..."
-                className="pl-9"
-              />
+              <Input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && doSearch()}
+                placeholder="Search music, radio, news..." className="pl-9" />
             </div>
-            <Button onClick={() => doSearch(query)} disabled={loading || !query.trim()}
+            <Button onClick={doSearch} disabled={loading || !query.trim()}
               className="bg-red-500 hover:bg-red-600 text-white shrink-0">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             </Button>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {["live radio", "live music", "lofi 24/7", "jazz radio", "gospel live", "reggae"].map(s => (
-              <button key={s} onClick={() => { setQuery(s); doSearch(s); }}
+              <button key={s} onClick={() => { setQuery(s); load(() => callYT("search", { q: s, maxResults: "20" })); }}
                 className="text-xs px-3 py-1 rounded-full border text-muted-foreground hover:bg-muted transition-colors">
                 {s}
               </button>
@@ -231,21 +136,30 @@ export const YouTubeBrowser = ({ onClose, initialTab = "search" }: Props) => {
             <p className="text-sm text-muted-foreground">Loading...</p>
           </div>
         )}
-
-        {!loading && results.length === 0 && tab === "search" && (
+        {error && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
+            <p className="text-sm text-red-500">Error: {error}</p>
+            <Button size="sm" variant="outline" onClick={() => {
+              if (tab === "news") load(() => callYT("news"));
+              else if (tab === "live") load(() => callYT("ytlive"));
+            }}>Retry</Button>
+          </div>
+        )}
+        {!loading && !error && results.length === 0 && tab === "search" && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-            <YTIcon />
+            <YTLogo />
             <p className="text-sm">Search or tap a suggestion above</p>
           </div>
         )}
-
-        {!loading && results.length === 0 && tab !== "search" && (
+        {!loading && !error && results.length === 0 && tab !== "search" && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
             <p className="text-sm">No live streams found right now</p>
-            <Button size="sm" variant="outline" onClick={tab === "news" ? fetchLiveNews : fetchYTLive}>Retry</Button>
+            <Button size="sm" variant="outline" onClick={() => {
+              if (tab === "news") load(() => callYT("news"));
+              else load(() => callYT("ytlive"));
+            }}>Retry</Button>
           </div>
         )}
-
         <div className="divide-y divide-border/30">
           {results.map(v => (
             <button key={v.id} onClick={() => setPlaying(v)}
@@ -253,7 +167,7 @@ export const YouTubeBrowser = ({ onClose, initialTab = "search" }: Props) => {
               <div className="relative shrink-0 w-28 h-16 rounded-lg overflow-hidden bg-muted">
                 {v.thumbnail
                   ? <img src={v.thumbnail} alt="" className="w-full h-full object-cover" loading="lazy" />
-                  : <div className="w-full h-full flex items-center justify-center"><YTIcon /></div>
+                  : <div className="w-full h-full flex items-center justify-center"><YTLogo /></div>
                 }
                 {v.isLive && (
                   <span className="absolute bottom-1 left-1 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">● LIVE</span>
