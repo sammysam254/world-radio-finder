@@ -166,6 +166,9 @@ const Index = () => {
 
   // TV state
   const [browseTvBy, setBrowseTvBy] = useState<"country" | "category">("country");
+  const [browseMenuOpen, setBrowseMenuOpen] = useState(false);
+  const [showYouTube, setShowYouTube] = useState(false);
+  const [youtubeTab, setYoutubeTab] = useState<"search"|"news"|"live">("search");
   const [tvCountries, setTvCountries] = useState<TvCountry[]>([]);
   const [tvCountry, setTvCountry] = useState<TvCountry | null>(null);
   const [tvCategoryList, setTvCategoryList] = useState<{ id: string; name: string; count: number }[]>([]);
@@ -862,6 +865,11 @@ const Index = () => {
                   >
                     <Layers className="h-3.5 w-3.5" /> By Category
                   </button>
+                  <button onClick={() => setBrowseMenuOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium text-muted-foreground hover:bg-muted/60 transition-all">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    More
+                  </button>
                   <button
                     onClick={() => { setYoutubeTab("search"); setShowYouTube(true); }}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all text-muted-foreground hover:text-red-500"
@@ -1080,6 +1088,11 @@ const Index = () => {
                     style={browseTvBy === "category" ? { background: "var(--gradient-primary)" } : undefined}
                   >
                     <Layers className="h-3.5 w-3.5" /> By Category
+                  </button>
+                  <button onClick={() => setBrowseMenuOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium text-muted-foreground hover:bg-muted/60 transition-all">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    More
                   </button>
                   <button
                     onClick={() => { setYoutubeTab("search"); setShowYouTube(true); }}
