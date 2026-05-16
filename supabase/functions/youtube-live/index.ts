@@ -1,30 +1,21 @@
-// YouTube edge function - handles live channel lookup AND search
-// Uses YOUTUBE_API_KEY (server-side secret)
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 const cache = new Map<string, { data: unknown; ts: number }>();
-const TTL = 60_000;
+const TTL = 120_000;
 
 const NEWS_CHANNELS = [
-  "UCupvZG-5ko_eiXAupbDfxWw",
-  "UCNye-wNBqNL5ZzHSJj3l8Bg",
-  "UCIALMKvObZNtJ6AmdCLP7Hg",
-  "UChBQgieUidXV1CmDxSdRm3g",
-  "UCqBJ47FjJcl61fmSbcadAVg",
-  "UCKVsdeoHExltrWMuK0hOWmg",
-  "UCt3SE-Mvs3WwP7UW-PiFdqQ",
-  "UCTJhJBE8DYqS6tXZ0SfFiuA",
-  "UCOGnQBpKifYsBmCMeVMbvjQ",
-  "UCLLjuCopVJFpGEsGhRMrL8Q",
+  "UCupvZG-5ko_eiXAupbDfxWw","UCNye-wNBqNL5ZzHSJj3l8Bg",
+  "UCIALMKvObZNtJ6AmdCLP7Hg","UChBQgieUidXV1CmDxSdRm3g",
+  "UCqBJ47FjJcl61fmSbcadAVg","UCKVsdeoHExltrWMuK0hOWmg",
+  "UCt3SE-Mvs3WwP7UW-PiFdqQ","UCTJhJBE8DYqS6tXZ0SfFiuA",
+  "UCOGnQBpKifYsBmCMeVMbvjQ","UCLLjuCopVJFpGEsGhRMrL8Q",
 ];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-
   const KEY = Deno.env.get("YOUTUBE_API_KEY");
   if (!KEY) return new Response(JSON.stringify({ error: "YOUTUBE_API_KEY not configured" }), {
     status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -36,56 +27,54 @@ Deno.serve(async (req) => {
   const json = (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-  // Original channel live lookup
+  const ytSearch = async (params: Record<string,string>) => {
+    const p = new URLSearchParams({ part: "snippet", key: KEY, type: "video", ...params });
+    const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${p}`);
+    return r.json();
+  };
+
+  const mapItems = (items: any[]) => (items || [])
+    .filter((i: any) => i.id?.videoId)
+    .map((i: any) => ({
+      id: i.id.videoId,
+      title: i.snippet.title,
+      channelTitle: i.snippet.channelTitle,
+      thumbnail: i.snippet.thumbnails?.medium?.url || i.snippet.thumbnails?.default?.url || "",
+      isLive: i.snippet.liveBroadcastContent === "live",
+    }));
+
+  // Original channel live lookup (kept for Kenya TV channels)
   if (action === "channel") {
     const channelId = url.searchParams.get("channelId");
     if (!channelId) return json({ error: "channelId required" }, 400);
     const cached = cache.get(channelId);
     if (cached && Date.now() - cached.ts < TTL) return json(cached.data);
     try {
-      const api = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&key=${KEY}`;
-      const r = await fetch(api);
-      const data = await r.json();
+      const data = await ytSearch({ channelId, eventType: "live", maxResults: "1" });
       cache.set(channelId, { data, ts: Date.now() });
       return json(data);
-    } catch (e) {
-      return json({ error: String(e) }, 500);
-    }
+    } catch (e) { return json({ error: String(e) }, 500); }
   }
 
-  // Search
+  // General search - no channelId needed
   if (action === "search") {
-    const q = url.searchParams.get("q") || "";
+    const q = url.searchParams.get("q") || "live music";
     const eventType = url.searchParams.get("eventType") || "";
     const maxResults = url.searchParams.get("maxResults") || "20";
     const cacheKey = `search_${q}_${eventType}`;
     const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.ts < TTL) return json(cached.data);
     try {
-      const params = new URLSearchParams({
-        part: "snippet", key: KEY, type: "video",
-        maxResults, q,
-        ...(eventType ? { eventType } : {}),
-      });
-      const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
-      const data = await r.json();
-      const result = {
-        items: (data.items || []).filter((i: any) => i.id?.videoId).map((i: any) => ({
-          id: i.id.videoId,
-          title: i.snippet.title,
-          channelTitle: i.snippet.channelTitle,
-          thumbnail: i.snippet.thumbnails?.medium?.url || i.snippet.thumbnails?.default?.url || "",
-          isLive: i.snippet.liveBroadcastContent === "live",
-        })),
-      };
+      const params: Record<string,string> = { q, maxResults };
+      if (eventType) params.eventType = eventType;
+      const data = await ytSearch(params);
+      const result = { items: mapItems(data.items || []) };
       cache.set(cacheKey, { data: result, ts: Date.now() });
       return json(result);
-    } catch (e) {
-      return json({ error: String(e) }, 500);
-    }
+    } catch (e) { return json({ error: String(e) }, 500); }
   }
 
-  // Live news - fetch from known news channels
+  // Live news from known news channels
   if (action === "news") {
     const cacheKey = "news_live";
     const cached = cache.get(cacheKey);
@@ -94,26 +83,20 @@ Deno.serve(async (req) => {
     await Promise.allSettled(
       NEWS_CHANNELS.map(async (channelId) => {
         try {
-          const params = new URLSearchParams({
-            part: "snippet", channelId, eventType: "live",
-            type: "video", maxResults: "2", key: KEY,
-          });
-          const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
-          const data = await r.json();
-          (data.items || []).forEach((i: any) => {
-            if (i.id?.videoId) {
-              all.push({
-                id: i.id.videoId,
-                title: i.snippet.title,
-                channelTitle: i.snippet.channelTitle,
-                thumbnail: i.snippet.thumbnails?.medium?.url || "",
-                isLive: true,
-              });
-            }
+          const data = await ytSearch({ channelId, eventType: "live", maxResults: "2" });
+          mapItems(data.items || []).forEach(v => {
+            if (!all.find((a: any) => a.id === v.id)) all.push(v);
           });
         } catch {}
       })
     );
+    // Fallback if no live found - search for news
+    if (all.length === 0) {
+      try {
+        const data = await ytSearch({ q: "live news today", eventType: "live", maxResults: "20" });
+        mapItems(data.items || []).forEach(v => all.push(v));
+      } catch {}
+    }
     const result = { items: all };
     cache.set(cacheKey, { data: result, ts: Date.now() });
     return json(result);
@@ -124,29 +107,18 @@ Deno.serve(async (req) => {
     const cacheKey = "ytlive";
     const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.ts < TTL) return json(cached.data);
-    const queries = ["live radio stream", "live music 24/7", "live news stream", "radio en vivo", "live tv stream"];
+    const queries = [
+      "live radio music", "live music stream 24/7",
+      "live tv channel", "radio en vivo", "live gospel music",
+    ];
     const all: unknown[] = [];
     const seen = new Set<string>();
     await Promise.allSettled(
       queries.map(async (q) => {
         try {
-          const params = new URLSearchParams({
-            part: "snippet", q, eventType: "live",
-            type: "video", maxResults: "5", key: KEY,
-          });
-          const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`);
-          const data = await r.json();
-          (data.items || []).forEach((i: any) => {
-            if (i.id?.videoId && !seen.has(i.id.videoId)) {
-              seen.add(i.id.videoId);
-              all.push({
-                id: i.id.videoId,
-                title: i.snippet.title,
-                channelTitle: i.snippet.channelTitle,
-                thumbnail: i.snippet.thumbnails?.medium?.url || "",
-                isLive: true,
-              });
-            }
+          const data = await ytSearch({ q, eventType: "live", maxResults: "6" });
+          mapItems(data.items || []).forEach((v: any) => {
+            if (!seen.has(v.id)) { seen.add(v.id); all.push(v); }
           });
         } catch {}
       })
