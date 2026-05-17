@@ -20,7 +20,7 @@ const callYT = async (action: string, params: Record<string, string> = {}): Prom
 };
 
 export const YouTubeBrowser = ({ onClose, initialTab = "search" }: Props) => {
-  const [tab, setTab] = useState<"search" | "news" | "live">(initialTab);
+  const [tab, setTab] = useState<"search" | "news" | "live" | "home">(initialTab === "search" ? "home" : initialTab);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<YTVideo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -36,7 +36,8 @@ export const YouTubeBrowser = ({ onClose, initialTab = "search" }: Props) => {
   };
 
   useEffect(() => {
-    if (tab === "news") load(() => callYT("news"));
+    if (tab === "home") load(() => callYT("search", { q: "trending music live radio popular", maxResults: "20" }));
+    else if (tab === "news") load(() => callYT("news"));
     else if (tab === "live") load(() => callYT("ytlive"));
     else setTimeout(() => inputRef.current?.focus(), 100);
   }, [tab]);
@@ -68,6 +69,7 @@ export const YouTubeBrowser = ({ onClose, initialTab = "search" }: Props) => {
       {/* Tabs */}
       <div className="flex gap-2 px-4 py-2 border-b shrink-0">
         {([
+          { id: "home",   label: "🏠 Home" },
           { id: "search", label: "🔍 Search" },
           { id: "news",   label: "📺 Live News" },
           { id: "live",   label: "🎙️ YT Live" },
@@ -103,7 +105,7 @@ export const YouTubeBrowser = ({ onClose, initialTab = "search" }: Props) => {
       )}
 
       {/* Search */}
-      {tab === "search" && (
+      {tab === "search" && tab !== "home" && (
         <div className="px-4 py-3 shrink-0 space-y-2 border-b">
           <div className="flex gap-2">
             <div className="relative flex-1">
