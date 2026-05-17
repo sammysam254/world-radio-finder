@@ -182,9 +182,6 @@ const Index = () => {
 
   // Big player / fullscreen
   const [bigPlayer, setBigPlayer] = useState(false);
-  const [showYouTube, setShowYouTube] = useState(false);
-  const [youtubeTab, setYoutubeTab] = useState<"search"|"news"|"live">("search");
-  const [browseMenuOpen, setBrowseMenuOpen] = useState(false);
   const playerWrapRef = useRef<HTMLDivElement | null>(null);
   const skipStationRef = useRef<((dir: 1 | -1) => void) | null>(null);
 
