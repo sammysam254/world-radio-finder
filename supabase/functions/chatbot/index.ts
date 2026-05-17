@@ -23,6 +23,85 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ═══════════════════════════════════════════════════════════════════
+// GOOGLE SEARCH FALLBACK (no API key required)
+// ═══════════════════════════════════════════════════════════════════
+
+async function searchGoogle(query: string): Promise<string> {
+  try {
+    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=5&hl=en`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+        "Accept": "text/html",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    const html = await res.text();
+    const snippets: string[] = [];
+
+    // Extract from common snippet span classes
+    const spanMatches = html.matchAll(/<span[^>]*class="[^"]*(?:st|IsZvec|aCOpRe|hgKElc|LXH9d|s3v9rd|VwiC3b)[^"]*"[^>]*>(.*?)<\/span>/gs);
+    for (const m of spanMatches) {
+      const text = m[1]
+        .replace(/<[^>]+>/g, "")
+        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+        .replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+        .trim();
+      if (text.length > 30 && text.length < 500) snippets.push(text);
+    }
+
+    // Extract from data-sncf divs
+    const divMatches = html.matchAll(/<div[^>]*data-sncf[^>]*>(.*?)<\/div>/gs);
+    for (const m of divMatches) {
+      const text = m[1].replace(/<[^>]+>/g, "").trim();
+      if (text.length > 30) snippets.push(text);
+    }
+
+    // Featured snippet / knowledge panel
+    const featuredMatch = html.match(/data-attrid="wa:\/description"[^>]*>(.*?)<\/div>/s);
+    if (featuredMatch) {
+      const text = featuredMatch[1].replace(/<[^>]+>/g, "").trim();
+      if (text) snippets.unshift(text);
+    }
+
+    const unique = [...new Set(snippets)].slice(0, 8);
+    return unique.join(" | ");
+  } catch {
+    return "";
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// WAVEBOX HARDCODED KNOWLEDGE (instant, no DB lookup needed)
+// ═══════════════════════════════════════════════════════════════════
+
+function waveboxKnowledge(msg: string): string | null {
+  const m = msg.toLowerCase();
+  if (m.includes("deposit") || m.includes("add money") || m.includes("fund"))
+    return "To deposit on Wavebox go to your Wallet page. Choose Crypto USDT (min $10, 2% fee) or Pay with Card via Paystack (min $10, 4% fee). Your balance is credited in USD after payment.";
+  if (m.includes("withdraw"))
+    return "Withdrawals on Wavebox are available via Crypto USDT (24hrs) or bank. Go to Wallet and enter your destination details. A $1 fee applies.";
+  if ((m.includes("listen") || m.includes("radio") || m.includes("station")) && m.includes("wavebox"))
+    return "On Wavebox tap the Radio tab then browse by Country or Category. Tap any station to start playing instantly. Over 50,000 stations worldwide.";
+  if (m.includes("wavebox") && (m.includes("tv") || m.includes("watch")))
+    return "On Wavebox tap the TV tab to browse live TV channels by country or category. Includes news, sports, entertainment and movies channels.";
+  if (m.includes("wavebox") && m.includes("advertise"))
+    return "To advertise on Wavebox visit wavebox.site/advertise. Your ads reach thousands of radio and TV listeners globally.";
+  if (m.includes("wavebox"))
+    return "Wavebox (wavebox.site) is a free live radio and TV streaming app based in Kenya. Listen to 50,000+ radio stations, watch live TV, chat with listeners and manage a wallet for premium features.";
+  return null;
+}
+
+// Format Google snippets into a clean answer
+function buildGoogleAnswer(snippets: string): string | null {
+  if (!snippets || snippets.length < 50) return null;
+  const parts = snippets.split(" | ").filter(p => p.length > 20);
+  if (parts.length === 0) return null;
+  const best = parts.slice(0, 3).join(". ");
+  return best.length > 400 ? best.substring(0, 400).trim() + "..." : best;
+}
+
 const SUPA_URL = Deno.env.get("SUPABASE_URL")!;
 const SVC      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -236,7 +315,8 @@ function buildContextualResponse(
   history: { role: string; content: string }[],
   intentResult: { intent: Intent; score: number } | null,
   knowledgeResult: { entry: KnowledgeEntry; score: number } | null,
-  ngramGenerated: string
+  ngramGenerated: string,
+  googleAnswer: string | null = null
 ): { response: string; confidence: number; source: string } {
 
   // Check conversation context — did user ask a follow-up?
@@ -245,7 +325,13 @@ function buildContextualResponse(
     ["more","else","also","another","what about","tell me","explain","how","why"].includes(t)
   );
 
-  // Priority 1: High-confidence knowledge base match (learned from real users)
+  // Priority 1: Wavebox hardcoded knowledge (instant, always accurate)
+  const wbAnswer = waveboxKnowledge(query);
+  if (wbAnswer) {
+    return { response: wbAnswer, confidence: 1.0, source: "wavebox_knowledge" };
+  }
+
+  // Priority 2: High-confidence knowledge base match (learned from real users)
   if (knowledgeResult && knowledgeResult.score > 0.45) {
     return {
       response: knowledgeResult.entry.answer,
@@ -254,7 +340,7 @@ function buildContextualResponse(
     };
   }
 
-  // Priority 2: Intent match with good confidence
+  // Priority 3: Intent match with good confidence
   if (intentResult && intentResult.score > 0.12) {
     let response = intentResult.intent.response;
 
@@ -270,7 +356,7 @@ function buildContextualResponse(
     };
   }
 
-  // Priority 3: Weaker knowledge match
+  // Priority 4: Weaker knowledge match
   if (knowledgeResult && knowledgeResult.score > 0.08) {
     return {
       response: knowledgeResult.entry.answer,
@@ -279,7 +365,7 @@ function buildContextualResponse(
     };
   }
 
-  // Priority 4: N-gram generated response (if meaningful)
+  // Priority 5: N-gram generated response (if meaningful)
   if (ngramGenerated && ngramGenerated.split(" ").length > 5) {
     return {
       response: `Based on what I've learned: ${ngramGenerated}`,
@@ -288,7 +374,12 @@ function buildContextualResponse(
     };
   }
 
-  // Priority 5: Intelligent fallback with partial understanding
+  // Priority 6: Google search result (real-time web knowledge)
+  if (googleAnswer) {
+    return { response: googleAnswer, confidence: 0.6, source: "google_search" };
+  }
+
+  // Priority 7: Intelligent fallback with partial understanding
   const partialMatch = getPartialMatch(queryTokens);
   if (partialMatch) {
     return { response: partialMatch, confidence: 0.2, source: "partial_match" };
@@ -423,10 +514,22 @@ Deno.serve(async (req) => {
     // Generate from n-gram model using query tokens as seed
     const ngramGenerated = generateFromNgrams(queryTokens.slice(0, 2), ngramMap, 30);
 
+    // Check Wavebox hardcoded knowledge first — if it matches, skip Google entirely
+    const wbFastCheck = waveboxKnowledge(userMessage);
+
+    // Only call Google if local engines don't have a confident answer
+    const needsGoogle = !wbFastCheck
+      && (!intentResult || intentResult.score < 0.12)
+      && (!knowledgeResult || knowledgeResult.score < 0.08)
+      && (!ngramGenerated || ngramGenerated.split(" ").length <= 5);
+
+    const googleSnippets = needsGoogle ? await searchGoogle(userMessage) : "";
+    const googleAnswer   = buildGoogleAnswer(googleSnippets);
+
     // Build final response
     const { response, confidence, source } = buildContextualResponse(
       userMessage, queryTokens, history,
-      intentResult, knowledgeResult, ngramGenerated
+      intentResult, knowledgeResult, ngramGenerated, googleAnswer
     );
 
     // Store conversation + train model asynchronously
